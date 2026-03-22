@@ -24,6 +24,7 @@ class LibraryToolbar(QToolBar):
     health_check_requested = pyqtSignal()
     settings_requested = pyqtSignal()
     activity_log_requested = pyqtSignal()
+    smart_organise_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__("Library", parent)
@@ -88,6 +89,17 @@ class LibraryToolbar(QToolBar):
         self._settings_btn.setToolTip("Open settings")
         self._settings_btn.clicked.connect(self.settings_requested)
         hl.addWidget(self._settings_btn)
+
+        sep_so = QFrame()
+        sep_so.setFrameShape(QFrame.Shape.VLine)
+        sep_so.setStyleSheet("color: #45475a;")
+        sep_so.setFixedWidth(1)
+        hl.addWidget(sep_so)
+
+        self._smart_btn = QPushButton("✦ Smart Organise")
+        self._smart_btn.setToolTip("Use Claude AI to suggest a reorganised folder structure and file renames")
+        self._smart_btn.clicked.connect(self.smart_organise_requested)
+        hl.addWidget(self._smart_btn)
 
         sep3 = QFrame()
         sep3.setFrameShape(QFrame.Shape.VLine)

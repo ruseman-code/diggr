@@ -503,6 +503,17 @@ def get_health_report() -> dict:
     }
 
 
+def rename_sample_path(old_abs: str, new_abs: str):
+    """Update the stored path for a sample after it has been moved on disk."""
+    old_rel = _rel(old_abs)
+    new_rel = _rel(new_abs)
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE samples SET path = ? WHERE path = ?",
+            (new_rel, old_rel),
+        )
+
+
 def remove_sample(path: str):
     """Permanently delete a sample and its tags/project memberships from the DB."""
     rel = _rel(path)

@@ -190,11 +190,12 @@ class MainWindow(QMainWindow):
             self.file_browser.load_folder(folder)
 
     def _connect_signals(self):
-        # Library toolbar → switch active library / health check / settings / log
+        # Library toolbar → switch active library / health check / settings / log / smart organise
         self.library_toolbar.library_switched.connect(self._on_library_switched)
         self.library_toolbar.health_check_requested.connect(self._run_health_check)
         self.library_toolbar.settings_requested.connect(self._open_settings)
         self.library_toolbar.activity_log_requested.connect(self._open_activity_log)
+        self.library_toolbar.smart_organise_requested.connect(self._on_smart_organise)
 
         # Filter panel → file browser
         self.filter_panel.filters_changed.connect(self._apply_filters)
@@ -282,6 +283,60 @@ class MainWindow(QMainWindow):
     def _open_activity_log(self):
         dlg = ActivityLogDialog(self)
         dlg.exec()
+
+    def _on_smart_organise(self):
+        """Entry point for the Smart Organise feature."""
+        from PyQt6.QtWidgets import QDialog, QMessageBox
+        from ui.smart_organise_dialog import SmartOrganiseDialog
+        from ui.smart_organise_preview_dialog import SmartOrganisePreviewDialog
+
+        # Require an API key — nudge the user towards Settings if missing
+        if not config.get_api_key():
+            reply = QMessageBox.question(
+                self,
+                "API key required",
+                "Smart Organise uses the Claude AI API, which requires an API key.\n\n"
+                "Open Settings to add your key?\n\n"
+                "Your key is stored locally in config.json and never shared.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._open_settings()
+            return
+
+        # Step 1 – API call
+        api_dlg = SmartOrganiseDialog(self)
+        if api_dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        result_data = api_dlg.result_data
+        if not result_data or not result_data.get("operations"):
+            QMessageBox.information(
+                self,
+                "No changes suggested",
+                "Claude didn't suggest any file operations for this library.\n\n"
+                "Your library may already be well-organised, or the samples may\n"
+                "lack enough metadata (BPM, key, tags) for Claude to make\n"
+                "confident suggestions.",
+            )
+            return
+
+        # Step 2 – Preview + backup + apply
+        preview = SmartOrganisePreviewDialog(result_data, self)
+        preview.apply_complete.connect(self._on_smart_organise_applied)
+        preview.exec()
+
+    def _on_smart_organise_applied(self):
+        """Reload the library root folder after Smart Organise moves files."""
+        root = config.get_library_root()
+        if root:
+            self.file_browser.load_folder(root)
+        else:
+            folder = config.get_last_folder()
+            if folder:
+                self.file_browser.load_folder(folder)
+            else:
+                self.file_browser.refresh()
 
     def _run_health_check(self):
         dlg = HealthCheckDialog(self)

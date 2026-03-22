@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QSpinBox,
 )
 
+import activity_log
 import config
 
 
@@ -224,10 +225,16 @@ class SettingsDialog(QDialog):
         conv_row.addWidget(QLabel("Smart Organise conventions:"))
         reset_btn = QPushButton("Reset conventions")
         reset_btn.setToolTip(
-            "Clears any saved Smart Organise naming/sorting rules from config.json."
+            "Clears any saved Smart Organise naming/sorting rules from config.json.\n"
+            "The next Smart Organise run will perform a full re-organise."
         )
-        self._conv_status = QLabel("")
-        self._conv_status.setStyleSheet("color: #888; font-size: 11px;")
+        saved = config.get_smart_organise_conventions()
+        status_text = "Conventions saved" if saved else "No conventions saved"
+        self._conv_status = QLabel(status_text)
+        self._conv_status.setStyleSheet(
+            "color: #a6e3a1; font-size: 11px;" if saved
+            else "color: #6c7086; font-size: 11px;"
+        )
         reset_btn.clicked.connect(self._reset_conventions)
         conv_row.addWidget(reset_btn)
         conv_row.addWidget(self._conv_status)
@@ -327,9 +334,9 @@ class SettingsDialog(QDialog):
 
     def _reset_conventions(self):
         config.clear_smart_organise_conventions()
-        self._conv_status.setText("Cleared.")
-        from PyQt6.QtCore import QTimer
-        QTimer.singleShot(2000, lambda: self._conv_status.setText(""))
+        activity_log.log("Smart Organise conventions reset by user")
+        self._conv_status.setText("Cleared — next run will do a full re-organise")
+        self._conv_status.setStyleSheet("color: #f9e2af; font-size: 11px;")
 
 
 # ── API key check (runs in a background thread) ───────────────────────────────

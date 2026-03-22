@@ -231,6 +231,17 @@ def set_font_size(size: int):
     _save(data)
 
 
+def get_smart_organise_conventions() -> Optional[dict]:
+    """Return the saved Smart Organise conventions object, or None if not set."""
+    return _load().get("smart_organise_conventions") or None
+
+
+def set_smart_organise_conventions(conventions: dict):
+    data = _load()
+    data["smart_organise_conventions"] = conventions
+    _save(data)
+
+
 def clear_smart_organise_conventions():
     data = _load()
     data.pop("smart_organise_conventions", None)
