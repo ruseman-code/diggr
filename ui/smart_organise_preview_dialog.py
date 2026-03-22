@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import shutil
 import threading
+from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -150,12 +151,14 @@ class SmartOrganisePreviewDialog(QDialog):
         self._table.setColumnCount(2)
         self._table.setHorizontalHeaderLabels(["Current path", "Proposed path"])
         hdr_view = self._table.horizontalHeader()
-        hdr_view.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        hdr_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        hdr_view.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        hdr_view.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        hdr_view.setStretchLastSection(False)
         self._table.verticalHeader().setVisible(False)
-        self._table.setAlternatingRowColors(True)
+        self._table.setAlternatingRowColors(False)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._table.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self._table.itemChanged.connect(self._on_item_changed)
         root.addWidget(self._table, stretch=1)
 
@@ -209,39 +212,85 @@ class SmartOrganisePreviewDialog(QDialog):
 
     # ── Table population ──────────────────────────────────────────────────
 
+    # Role used to mark section-header rows so they are skipped by selection logic
+    _IS_HEADER_ROLE = Qt.ItemDataRole.UserRole + 1
+
     def _populate_table(self, filter_mode: str = "All operations"):
         self._table.itemChanged.disconnect(self._on_item_changed)
         self._table.setRowCount(0)
 
+        # Filter first, then group by destination folder
+        filtered: list[dict] = []
         for op in self._ops:
             frm, to = op["from"], op["to"]
-
             is_rename = Path(frm).parent == Path(to).parent
             if filter_mode == "Renames only" and not is_rename:
                 continue
             if filter_mode == "Moves only" and is_rename:
                 continue
+            filtered.append(op)
 
-            row = self._table.rowCount()
-            self._table.insertRow(row)
+        # Group by the destination directory
+        groups: dict[str, list[dict]] = OrderedDict()
+        for op in filtered:
+            dest_dir = str(Path(op["to"]).parent)
+            groups.setdefault(dest_dir, []).append(op)
 
-            from_item = QTableWidgetItem(frm)
-            from_item.setCheckState(Qt.CheckState.Checked)
-            from_item.setData(Qt.ItemDataRole.UserRole, op)
-            from_item.setToolTip(frm)
-            self._table.setItem(row, _COL_FROM, from_item)
+        header_font = QFont()
+        header_font.setBold(True)
+        header_bg   = QColor("#2a2a3d")
+        header_fg   = QColor("#cdd6f4")
 
-            to_item = QTableWidgetItem(to)
-            to_item.setForeground(QBrush(QColor("#a6e3a1")))
-            to_item.setToolTip(to)
-            self._table.setItem(row, _COL_TO, to_item)
+        for dest_dir, ops in groups.items():
+            # Section header row spanning both columns
+            hdr_row = self._table.rowCount()
+            self._table.insertRow(hdr_row)
+            hdr_item = QTableWidgetItem(f"  → {dest_dir}")
+            hdr_item.setFont(header_font)
+            hdr_item.setForeground(QBrush(header_fg))
+            hdr_item.setBackground(QBrush(header_bg))
+            hdr_item.setData(self._IS_HEADER_ROLE, True)
+            hdr_item.setFlags(Qt.ItemFlag.ItemIsEnabled)   # not checkable
+            self._table.setItem(hdr_row, _COL_FROM, hdr_item)
 
+            spacer = QTableWidgetItem("")
+            spacer.setBackground(QBrush(header_bg))
+            spacer.setData(self._IS_HEADER_ROLE, True)
+            spacer.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self._table.setItem(hdr_row, _COL_TO, spacer)
+
+            # File rows
+            for op in ops:
+                frm, to = op["from"], op["to"]
+                row = self._table.rowCount()
+                self._table.insertRow(row)
+
+                from_item = QTableWidgetItem(frm)
+                from_item.setCheckState(Qt.CheckState.Checked)
+                from_item.setData(Qt.ItemDataRole.UserRole, op)
+                from_item.setData(self._IS_HEADER_ROLE, False)
+                from_item.setToolTip(frm)
+                self._table.setItem(row, _COL_FROM, from_item)
+
+                to_item = QTableWidgetItem(to)
+                to_item.setForeground(QBrush(QColor("#a6e3a1")))
+                to_item.setData(self._IS_HEADER_ROLE, False)
+                to_item.setToolTip(to)
+                self._table.setItem(row, _COL_TO, to_item)
+
+        self._table.resizeColumnsToContents()
         self._table.itemChanged.connect(self._on_item_changed)
         self._update_sel_label()
+
+    def _is_header_row(self, row: int) -> bool:
+        it = self._table.item(row, _COL_FROM)
+        return bool(it and it.data(self._IS_HEADER_ROLE))
 
     def _select_all(self):
         self._table.itemChanged.disconnect(self._on_item_changed)
         for row in range(self._table.rowCount()):
+            if self._is_header_row(row):
+                continue
             it = self._table.item(row, _COL_FROM)
             if it:
                 it.setCheckState(Qt.CheckState.Checked)
@@ -252,6 +301,8 @@ class SmartOrganisePreviewDialog(QDialog):
     def _deselect_all(self):
         self._table.itemChanged.disconnect(self._on_item_changed)
         for row in range(self._table.rowCount()):
+            if self._is_header_row(row):
+                continue
             it = self._table.item(row, _COL_FROM)
             if it:
                 it.setCheckState(Qt.CheckState.Unchecked)
@@ -260,25 +311,29 @@ class SmartOrganisePreviewDialog(QDialog):
         self._update_apply_btn()
 
     def _on_item_changed(self, item):
-        if item.column() == _COL_FROM:
+        if item.column() == _COL_FROM and not item.data(self._IS_HEADER_ROLE):
             self._update_sel_label()
             self._update_apply_btn()
 
     def _selected_ops(self) -> list:
         ops = []
         for row in range(self._table.rowCount()):
+            if self._is_header_row(row):
+                continue
             it = self._table.item(row, _COL_FROM)
             if it and it.checkState() == Qt.CheckState.Checked:
                 ops.append(it.data(Qt.ItemDataRole.UserRole))
         return ops
 
     def _update_sel_label(self):
-        total = self._table.rowCount()
-        checked = sum(
-            1 for row in range(total)
-            if (it := self._table.item(row, _COL_FROM))
-            and it.checkState() == Qt.CheckState.Checked
-        )
+        total = checked = 0
+        for row in range(self._table.rowCount()):
+            if self._is_header_row(row):
+                continue
+            total += 1
+            it = self._table.item(row, _COL_FROM)
+            if it and it.checkState() == Qt.CheckState.Checked:
+                checked += 1
         self._sel_label.setText(f"{checked} / {total} selected")
 
     def _update_apply_btn(self):

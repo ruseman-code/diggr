@@ -55,6 +55,11 @@ are.  Make the approaches genuinely distinct — for example:
   - By function (rhythmic, harmonic, textural, fx)
   - By BPM first, then instrument type within each bracket
 
+One-shot rule: one-shot samples (individual hits — kicks, snares, hats, cymbals, etc. — or
+any file with "one-shot", "oneshot", "hit", or "1shot" in the name) must NEVER be
+subdivided by BPM.  BPM-based subfolders are only appropriate for loops, breaks, and
+sustained samples where tempo is genuinely meaningful.
+
 Each approach should be grounded in the actual content of the files, not generic templates.
 
 Return ONLY valid JSON (no markdown fences, no explanation text):
@@ -84,9 +89,14 @@ Instrument identification:
   cymbals, perc, bass, sub, reese, neuro, leads, pads, chords, stabs, vox, fx, foley,
   atmospheres, breaks, loops, one-shots, risers, and others.
 
+One-shot rule: one-shot samples (individual hits — kicks, snares, hats, cymbals, etc. — or
+any file with "one-shot", "oneshot", "hit", or "1shot" in the name) must NEVER be placed
+in BPM-based subfolders.  BPM subfolders are only appropriate for loops, breaks, and
+sustained samples where tempo is genuinely meaningful.
+
 Naming conventions:
   - Lowercase, underscores only (no spaces, no hyphens)
-  - Include BPM where genuinely useful (loops/breaks): amen_loop_170.wav
+  - Include BPM where genuinely useful (loops/breaks only): amen_loop_170.wav
   - Include key where genuinely useful (melodic content): pad_lush_Cmin.wav
   - Keep filenames descriptive but concise
   - Sequential numbers for similar files: kick_01.wav, kick_02.wav
