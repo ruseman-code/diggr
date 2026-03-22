@@ -439,7 +439,47 @@ def search_samples(
     return result
 
 
-# ── Export ────────────────────────────────────────────────────────────────────
+# ── Library data export ───────────────────────────────────────────────────────
+
+def get_all_samples_for_export() -> list:
+    """Return every sample in the active library as a list of plain dicts.
+
+    Paths are absolute.  Tags are a list of strings.  Numeric fields that
+    have not yet been analysed are None.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, path, rating, bpm, key, notes FROM samples ORDER BY path"
+        ).fetchall()
+
+        # Fetch all tag assignments in one query then group in Python.
+        tag_rows = conn.execute("""
+            SELECT st.sample_id, t.name
+            FROM sample_tags st
+            JOIN tags t ON t.id = st.tag_id
+            ORDER BY st.sample_id, t.name
+        """).fetchall()
+
+    tags_by_id: dict = {}
+    for tr in tag_rows:
+        tags_by_id.setdefault(tr["sample_id"], []).append(tr["name"])
+
+    result = []
+    for row in rows:
+        abs_path = _abs(row["path"])
+        result.append({
+            "path":     abs_path,
+            "filename": os.path.basename(abs_path),
+            "rating":   row["rating"] or 0,
+            "bpm":      row["bpm"],          # float or None
+            "key":      row["key"] or "",
+            "tags":     tags_by_id.get(row["id"], []),
+            "notes":    row["notes"] or "",
+        })
+    return result
+
+
+# ── File copy export ──────────────────────────────────────────────────────────
 
 def export_samples(paths: list, dest_folder: str):
     dest = Path(dest_folder)
