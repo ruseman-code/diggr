@@ -1,18 +1,19 @@
-"""Centre panel: file list with inline rating stars and tag summary."""
+"""Centre panel: file list with rating, BPM, and tag columns."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 
 from PyQt6.QtCore import Qt, pyqtSignal, QSortFilterProxyModel, QModelIndex
-from PyQt6.QtGui import QStandardItemModel, QStandardItem, QColor, QFont
+from PyQt6.QtGui import QStandardItemModel, QStandardItem, QColor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTreeView, QLabel,
     QPushButton, QFileDialog, QHeaderView, QAbstractItemView,
-    QSizePolicy,
+    QSizePolicy, QMenu, QInputDialog,
 )
+from PyQt6.QtGui import QAction
 import database as db
 
 AUDIO_EXTS = {".mp3", ".wav", ".aiff", ".aif", ".flac", ".ogg"}
@@ -20,18 +21,45 @@ AUDIO_EXTS = {".mp3", ".wav", ".aiff", ".aif", ".flac", ".ogg"}
 # Column indices
 COL_NAME   = 0
 COL_RATING = 1
-COL_TAGS   = 2
-COL_PATH   = 3  # hidden, used for data access
+COL_BPM    = 2
+COL_KEY    = 3
+COL_TAGS   = 4
+COL_PATH   = 5  # hidden
+
+# ItemDataRoles for numeric sorting
+_RATING_ROLE = Qt.ItemDataRole.UserRole
+_BPM_ROLE    = Qt.ItemDataRole.UserRole + 1
+
+
+class _SampleSortProxy(QSortFilterProxyModel):
+    """Sorts rating and BPM columns numerically."""
+
+    def lessThan(self, left: QModelIndex, right: QModelIndex) -> bool:
+        col = left.column()
+        if col == COL_RATING:
+            lv = self.sourceModel().itemFromIndex(left).data(_RATING_ROLE) or 0
+            rv = self.sourceModel().itemFromIndex(right).data(_RATING_ROLE) or 0
+            return lv < rv
+        if col == COL_BPM:
+            lv = self.sourceModel().itemFromIndex(left).data(_BPM_ROLE) or 0.0
+            rv = self.sourceModel().itemFromIndex(right).data(_BPM_ROLE) or 0.0
+            return lv < rv
+        return super().lessThan(left, right)
 
 
 class FileBrowser(QWidget):
-    file_selected   = pyqtSignal(str)   # emitted when user clicks a row
-    file_activated  = pyqtSignal(str)   # emitted on double-click / Enter (play)
-    folder_changed  = pyqtSignal(str)
+    file_selected     = pyqtSignal(str)
+    file_activated    = pyqtSignal(str)
+    folder_changed    = pyqtSignal(str)
+    scan_complete     = pyqtSignal(list)
+    projects_modified = pyqtSignal()    # membership changed; project panel should refresh
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._folder: str = ""
+        self._current_project_id: Optional[int] = None   # None = Library
+        self._sort_col   = COL_NAME
+        self._sort_order = Qt.SortOrder.AscendingOrder
         self._build_ui()
 
     # ── Build ─────────────────────────────────────────────────────────────
@@ -48,14 +76,10 @@ class FileBrowser(QWidget):
         self.folder_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
-
         browse_btn = QPushButton("Open folder…")
         browse_btn.clicked.connect(self._choose_folder)
-
         export_btn = QPushButton("Export shortlist…")
-        export_btn.setObjectName("export_btn")
         export_btn.clicked.connect(self._export)
-
         top.addWidget(self.folder_label)
         top.addWidget(browse_btn)
         top.addWidget(export_btn)
@@ -66,14 +90,17 @@ class FileBrowser(QWidget):
         self.count_label.setStyleSheet("color: #777; font-size: 11px;")
         root.addWidget(self.count_label)
 
-        # Tree view
+        # Model + proxy
         self._model = QStandardItemModel()
-        self._model.setHorizontalHeaderLabels(["Filename", "★", "Tags", "Path"])
+        self._model.setHorizontalHeaderLabels(
+            ["Filename", "Rating", "BPM", "Key", "Tags", "Path"]
+        )
 
-        self._proxy = QSortFilterProxyModel()
+        self._proxy = _SampleSortProxy()
         self._proxy.setSourceModel(self._model)
         self._proxy.setSortCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
 
+        # Tree view
         self.tree = QTreeView()
         self.tree.setModel(self._proxy)
         self.tree.setRootIsDecorated(False)
@@ -83,13 +110,22 @@ class FileBrowser(QWidget):
         self.tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tree.doubleClicked.connect(self._on_double_click)
         self.tree.selectionModel().currentChanged.connect(self._on_selection_changed)
+        self.tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._on_context_menu)
 
         hdr = self.tree.header()
-        hdr.setSectionResizeMode(COL_NAME, QHeaderView.ResizeMode.Stretch)
+        hdr.setSectionResizeMode(COL_NAME,   QHeaderView.ResizeMode.Stretch)
         hdr.setSectionResizeMode(COL_RATING, QHeaderView.ResizeMode.Fixed)
-        hdr.setSectionResizeMode(COL_TAGS, QHeaderView.ResizeMode.ResizeToContents)
-        self.tree.setColumnWidth(COL_RATING, 40)
+        hdr.setSectionResizeMode(COL_BPM,    QHeaderView.ResizeMode.Fixed)
+        hdr.setSectionResizeMode(COL_KEY,    QHeaderView.ResizeMode.Fixed)
+        hdr.setSectionResizeMode(COL_TAGS,   QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSortIndicatorShown(True)
+        hdr.sortIndicatorChanged.connect(self._on_sort_changed)
+        self.tree.setColumnWidth(COL_RATING, 68)
+        self.tree.setColumnWidth(COL_BPM,    62)
+        self.tree.setColumnWidth(COL_KEY,    80)
         self.tree.setColumnHidden(COL_PATH, True)
+        self.tree.sortByColumn(COL_NAME, Qt.SortOrder.AscendingOrder)
 
         root.addWidget(self.tree, stretch=1)
 
@@ -106,57 +142,128 @@ class FileBrowser(QWidget):
         self._folder = folder
         self.folder_label.setText(folder)
         self.folder_changed.emit(folder)
-        self.refresh(name_query="", tags=[], min_rating=0)
+        all_paths = self._scan_folder()
+        self.scan_complete.emit(all_paths)
+        self.refresh()
 
-    # ── Refresh (apply filters) ────────────────────────────────────────────
+    # ── Scan (registers files in DB, returns all paths) ───────────────────
+
+    def _scan_folder(self) -> List[str]:
+        paths: List[str] = []
+        for root_dir, _, files in os.walk(self._folder):
+            for f in files:
+                if Path(f).suffix.lower() in AUDIO_EXTS:
+                    full = os.path.join(root_dir, f)
+                    db.upsert_sample(full)
+                    paths.append(full)
+        return paths
+
+    # ── Refresh (query DB, repopulate model) ──────────────────────────────
+
+    def set_project(self, project_id: Optional[int]):
+        """Switch the active project filter and refresh the list."""
+        self._current_project_id = project_id
+        self.refresh()
 
     def refresh(
         self,
         name_query: str = "",
         tags: Optional[list] = None,
         min_rating: int = 0,
+        min_bpm: int = 0,
+        max_bpm: int = 0,
+        key_filter: str = "",
     ):
-        if not self._folder:
+        # In project mode a folder isn't required
+        if not self._folder and self._current_project_id is None:
             return
 
-        # Ensure every audio file in the folder exists in the DB
-        self._scan_folder()
-
         rows = db.search_samples(
-            self._folder,
+            folder=self._folder,
             name_query=name_query,
             tags=tags or [],
             min_rating=min_rating,
+            min_bpm=min_bpm,
+            max_bpm=max_bpm,
+            key_filter=key_filter,
+            project_id=self._current_project_id,
         )
 
         self._model.removeRows(0, self._model.rowCount())
 
         for row in rows:
-            path = row["path"]
-            name = os.path.basename(path)
-            rating_str = "★" * row["rating"] if row["rating"] else ""
+            path     = row["path"]
+            name     = os.path.basename(path)
+            rating   = row["rating"] or 0
+            bpm_val  = row["bpm"]   # float or None
+            key_val  = row["key"]   # str  or None
             tags_str = row["tag_list"] or ""
 
             name_item   = QStandardItem(name)
-            rating_item = QStandardItem(rating_str)
+            rating_item = QStandardItem("★" * rating if rating else "")
+            bpm_item    = QStandardItem(f"{bpm_val:.1f}" if bpm_val else "–")
+            key_item    = QStandardItem(key_val or "–")
             tags_item   = QStandardItem(tags_str)
             path_item   = QStandardItem(path)
 
+            rating_item.setData(rating,      _RATING_ROLE)
             rating_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             rating_item.setForeground(QColor("#f0c040"))
 
-            self._model.appendRow([name_item, rating_item, tags_item, path_item])
+            bpm_item.setData(bpm_val or 0.0, _BPM_ROLE)
+            bpm_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            bpm_item.setForeground(
+                QColor("#89b4fa") if bpm_val else QColor("#45475a")
+            )
+
+            key_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            key_item.setForeground(
+                QColor("#a6e3a1") if key_val else QColor("#45475a")
+            )
+
+            self._model.appendRow(
+                [name_item, rating_item, bpm_item, key_item, tags_item, path_item]
+            )
 
         n = self._model.rowCount()
         self.count_label.setText(f"{n} file{'s' if n != 1 else ''}")
+        self._proxy.sort(self._sort_col, self._sort_order)
 
-    def _scan_folder(self):
-        """Walk folder and register any audio files not yet in the DB."""
-        for root, _, files in os.walk(self._folder):
-            for f in files:
-                if Path(f).suffix.lower() in AUDIO_EXTS:
-                    full = os.path.join(root, f)
-                    db.upsert_sample(full)
+    # ── Live analysis update (called as detection results arrive) ─────────
+
+    def update_file_analysis(self, path: str, bpm: float, key: str):
+        """Update BPM and Key cells for *path* in place."""
+        for row in range(self._model.rowCount()):
+            path_item = self._model.item(row, COL_PATH)
+            if not (path_item and path_item.text() == path):
+                continue
+
+            bpm_item = self._model.item(row, COL_BPM)
+            if bpm_item:
+                if bpm > 0:
+                    bpm_item.setText(f"{bpm:.1f}")
+                    bpm_item.setData(bpm, _BPM_ROLE)
+                    bpm_item.setForeground(QColor("#89b4fa"))
+                else:
+                    bpm_item.setText("–")
+                    bpm_item.setData(0.0, _BPM_ROLE)
+                    bpm_item.setForeground(QColor("#45475a"))
+
+            key_item = self._model.item(row, COL_KEY)
+            if key_item:
+                if key:
+                    key_item.setText(key)
+                    key_item.setForeground(QColor("#a6e3a1"))
+                else:
+                    key_item.setText("–")
+                    key_item.setForeground(QColor("#45475a"))
+            break
+
+    # ── Sort state ─────────────────────────────────────────────────────────
+
+    def _on_sort_changed(self, col: int, order: Qt.SortOrder):
+        self._sort_col   = col
+        self._sort_order = order
 
     # ── Selection / activation ────────────────────────────────────────────
 
@@ -174,26 +281,23 @@ class FileBrowser(QWidget):
         if not index.isValid():
             return ""
         src = self._proxy.mapToSource(index)
-        path_item = self._model.item(src.row(), COL_PATH)
-        return path_item.text() if path_item else ""
+        item = self._model.item(src.row(), COL_PATH)
+        return item.text() if item else ""
 
-    # ── Selected paths (for export) ────────────────────────────────────────
+    # ── Selected / visible paths (for export) ─────────────────────────────
 
-    def selected_paths(self) -> list[str]:
-        paths = []
-        for idx in self.tree.selectionModel().selectedRows():
-            p = self._path_for_index(idx)
-            if p:
-                paths.append(p)
-        return paths
+    def selected_paths(self) -> List[str]:
+        return [
+            p for idx in self.tree.selectionModel().selectedRows()
+            if (p := self._path_for_index(idx))
+        ]
 
-    def all_visible_paths(self) -> list[str]:
-        paths = []
-        for row in range(self._model.rowCount()):
-            item = self._model.item(row, COL_PATH)
-            if item:
-                paths.append(item.text())
-        return paths
+    def all_visible_paths(self) -> List[str]:
+        return [
+            self._model.item(row, COL_PATH).text()
+            for row in range(self._model.rowCount())
+            if self._model.item(row, COL_PATH)
+        ]
 
     # ── Export ─────────────────────────────────────────────────────────────
 
@@ -214,10 +318,86 @@ class FileBrowser(QWidget):
             + (f"\n({skipped} skipped – source not found)" if skipped else ""),
         )
 
-    # ── Public refresh trigger ─────────────────────────────────────────────
+    # ── Public filter trigger ──────────────────────────────────────────────
 
-    def apply_filters(self, name_query: str, tags: list[str], min_rating: int):
-        self.refresh(name_query=name_query, tags=tags, min_rating=min_rating)
+    def apply_filters(
+        self,
+        name_query: str,
+        tags: list,
+        min_rating: int,
+        min_bpm: int = 0,
+        max_bpm: int = 0,
+        key_filter: str = "",
+    ):
+        self.refresh(
+            name_query=name_query,
+            tags=tags,
+            min_rating=min_rating,
+            min_bpm=min_bpm,
+            max_bpm=max_bpm,
+            key_filter=key_filter,
+        )
+
+    # ── Context menu (right-click) ─────────────────────────────────────────
+
+    def _on_context_menu(self, pos):
+        paths = self.selected_paths()
+        if not paths:
+            return
+
+        menu = QMenu(self)
+        projects = db.get_projects()
+
+        # "Add to project" — submenu if projects exist, direct action otherwise
+        if projects:
+            add_menu = menu.addMenu("Add to project")
+            for proj in projects:
+                act = QAction(proj["name"], self)
+                pid = proj["id"]
+                act.triggered.connect(
+                    lambda checked, p=pid: self._add_to_project(paths, p)
+                )
+                add_menu.addAction(act)
+            add_menu.addSeparator()
+            new_act = QAction("New project…", self)
+            new_act.triggered.connect(lambda: self._add_to_new_project(paths))
+            add_menu.addAction(new_act)
+        else:
+            act = QAction("Add to new project…", self)
+            act.triggered.connect(lambda: self._add_to_new_project(paths))
+            menu.addAction(act)
+
+        # "Remove from project" — only when viewing a specific project
+        if self._current_project_id is not None:
+            menu.addSeparator()
+            rem_act = QAction("Remove from project", self)
+            rem_act.triggered.connect(lambda: self._remove_from_project(paths))
+            menu.addAction(rem_act)
+
+        menu.exec(self.tree.viewport().mapToGlobal(pos))
+
+    def _add_to_project(self, paths: List[str], project_id: int):
+        for p in paths:
+            db.add_to_project(p, project_id)
+        self.projects_modified.emit()
+
+    def _add_to_new_project(self, paths: List[str]):
+        name, ok = QInputDialog.getText(self, "New project", "Project name:")
+        name = name.strip()
+        if not ok or not name:
+            return
+        pid = db.create_project(name)
+        for p in paths:
+            db.add_to_project(p, pid)
+        self.projects_modified.emit()
+
+    def _remove_from_project(self, paths: List[str]):
+        if self._current_project_id is None:
+            return
+        for p in paths:
+            db.remove_from_project(p, self._current_project_id)
+        self.refresh()
+        self.projects_modified.emit()
 
     @property
     def current_folder(self) -> str:

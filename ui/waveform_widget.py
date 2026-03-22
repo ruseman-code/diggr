@@ -14,14 +14,28 @@ import audio_player as player
 
 def _read_audio(path: str):
     """Return (mono_normalised_float32_array, duration_ms). Raises on failure."""
-    import soundfile as sf
-    data, sr = sf.read(path, always_2d=True, dtype="float32")
-    mono = data.mean(axis=1)
-    dur_ms = len(mono) / sr * 1000.0
-    peak = float(np.abs(mono).max())
+    ext = path.rsplit(".", 1)[-1].lower()
+
+    if ext == "mp3":
+        # soundfile/libsndfile can't decode MP3 — use miniaudio instead
+        import miniaudio
+        decoded = miniaudio.decode_file(
+            path, output_format=miniaudio.SampleFormat.FLOAT32
+        )
+        samples = np.frombuffer(bytes(decoded.samples), dtype=np.float32).copy()
+        if decoded.num_channels > 1:
+            samples = samples.reshape(-1, decoded.num_channels).mean(axis=1)
+        dur_ms = len(samples) / decoded.sample_rate * 1000.0
+    else:
+        import soundfile as sf
+        data, sr = sf.read(path, always_2d=True, dtype="float32")
+        samples = data.mean(axis=1)
+        dur_ms = len(samples) / sr * 1000.0
+
+    peak = float(np.abs(samples).max())
     if peak > 0:
-        mono = mono / peak
-    return mono, dur_ms
+        samples = samples / peak
+    return samples, dur_ms
 
 
 class WaveformWidget(QWidget):

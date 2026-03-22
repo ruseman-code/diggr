@@ -3,9 +3,10 @@
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QCheckBox, QScrollArea, QSpinBox, QPushButton, QGroupBox,
+    QCheckBox, QScrollArea, QSpinBox, QPushButton, QGroupBox, QComboBox,
 )
 import database as db
+from bpm_detector import all_keys
 
 
 DEFAULT_TAGS = [
@@ -73,6 +74,50 @@ class FilterPanel(QWidget):
         btn_row.addStretch()
         tag_layout.addLayout(btn_row)
 
+        # BPM range
+        grp_bpm = QGroupBox("BPM range")
+        bpm_layout = QVBoxLayout(grp_bpm)
+
+        min_row = QHBoxLayout()
+        min_row.addWidget(QLabel("Min"))
+        self.bpm_min_spin = QSpinBox()
+        self.bpm_min_spin.setRange(0, 400)
+        self.bpm_min_spin.setSpecialValueText("—")
+        self.bpm_min_spin.setToolTip("Minimum BPM (0 = no limit)")
+        self.bpm_min_spin.valueChanged.connect(self.filters_changed)
+        min_row.addWidget(self.bpm_min_spin)
+        bpm_layout.addLayout(min_row)
+
+        max_row = QHBoxLayout()
+        max_row.addWidget(QLabel("Max"))
+        self.bpm_max_spin = QSpinBox()
+        self.bpm_max_spin.setRange(0, 400)
+        self.bpm_max_spin.setSpecialValueText("—")
+        self.bpm_max_spin.setToolTip("Maximum BPM (0 = no limit)")
+        self.bpm_max_spin.valueChanged.connect(self.filters_changed)
+        max_row.addWidget(self.bpm_max_spin)
+        bpm_layout.addLayout(max_row)
+
+        dnb_btn = QPushButton("DnB (170–174)")
+        dnb_btn.setFlat(True)
+        dnb_btn.setStyleSheet("color: #9bc; text-align: left; padding: 2px 0;")
+        dnb_btn.setToolTip("Set range to typical drum and bass tempo")
+        dnb_btn.clicked.connect(self._set_dnb_range)
+        bpm_layout.addWidget(dnb_btn)
+
+        root.addWidget(grp_bpm)
+
+        # Key filter
+        grp_key = QGroupBox("Key")
+        kl = QVBoxLayout(grp_key)
+        self.key_combo = QComboBox()
+        self.key_combo.addItem("Any key", "")
+        for k in all_keys():
+            self.key_combo.addItem(k, k)
+        self.key_combo.currentIndexChanged.connect(self.filters_changed)
+        kl.addWidget(self.key_combo)
+        root.addWidget(grp_key)
+
         root.addWidget(grp_tags, stretch=1)
 
         self.refresh_tags()
@@ -94,6 +139,10 @@ class FilterPanel(QWidget):
         for cb in self._tag_checkboxes.values():
             cb.setChecked(False)
 
+    def _set_dnb_range(self):
+        self.bpm_min_spin.setValue(170)
+        self.bpm_max_spin.setValue(174)
+
     # ── Public API ─────────────────────────────────────────────────────────
 
     @property
@@ -107,3 +156,15 @@ class FilterPanel(QWidget):
     @property
     def min_rating(self) -> int:
         return self.rating_spin.value()
+
+    @property
+    def min_bpm(self) -> int:
+        return self.bpm_min_spin.value()
+
+    @property
+    def max_bpm(self) -> int:
+        return self.bpm_max_spin.value()
+
+    @property
+    def key_filter(self) -> str:
+        return self.key_combo.currentData() or ""

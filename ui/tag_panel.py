@@ -109,12 +109,21 @@ class TagPanel(QWidget):
         sep.setFrameShape(QFrame.Shape.HLine)
         root.addWidget(sep)
 
-        # Rating
+        # Rating + BPM
         grp_rating = QGroupBox("Rating")
         rl = QVBoxLayout(grp_rating)
         self.star_rating = StarRating()
         self.star_rating.rating_changed.connect(self._on_rating_changed)
         rl.addWidget(self.star_rating)
+
+        self.bpm_label = QLabel("— BPM")
+        self.bpm_label.setStyleSheet("color: #89b4fa; font-size: 12px;")
+        rl.addWidget(self.bpm_label)
+
+        self.key_label = QLabel("— key")
+        self.key_label.setStyleSheet("color: #a6e3a1; font-size: 12px;")
+        rl.addWidget(self.key_label)
+
         root.addWidget(grp_rating)
 
         # Active tags
@@ -195,19 +204,57 @@ class TagPanel(QWidget):
 
         sample = db.get_sample(path)
         rating = sample["rating"] if sample else 0
-        notes = sample["notes"] if sample else ""
+        notes  = sample["notes"]  if sample else ""
+        bpm    = sample["bpm"]    if sample else None
+        key    = sample["key"]    if sample else None
 
         self.star_rating.set_rating(rating)
         self.notes_edit.blockSignals(True)
         self.notes_edit.setPlainText(notes)
         self.notes_edit.blockSignals(False)
 
+        if bpm:
+            self.set_bpm(bpm)
+        else:
+            self.set_bpm_detecting()
+
+        if key:
+            self.set_key(key)
+        else:
+            self.set_key_detecting()
+
         self._refresh_chips()
+
+    def set_bpm(self, bpm: float):
+        self.bpm_label.setText(f"{bpm:.1f} BPM")
+        self.bpm_label.setStyleSheet("color: #89b4fa; font-size: 12px;")
+
+    def set_bpm_detecting(self):
+        self.bpm_label.setText("Detecting BPM…")
+        self.bpm_label.setStyleSheet("color: #6c7086; font-size: 12px; font-style: italic;")
+
+    def set_bpm_failed(self):
+        self.bpm_label.setText("— BPM")
+        self.bpm_label.setStyleSheet("color: #585b70; font-size: 12px;")
+
+    def set_key(self, key: str):
+        self.key_label.setText(key)
+        self.key_label.setStyleSheet("color: #a6e3a1; font-size: 12px;")
+
+    def set_key_detecting(self):
+        self.key_label.setText("Detecting key…")
+        self.key_label.setStyleSheet("color: #6c7086; font-size: 12px; font-style: italic;")
+
+    def set_key_failed(self):
+        self.key_label.setText("— key")
+        self.key_label.setStyleSheet("color: #585b70; font-size: 12px;")
 
     def clear(self):
         self._current_path = None
         self.setEnabled(False)
         self.file_label.setText("No file selected")
+        self.bpm_label.setText("— BPM")
+        self.key_label.setText("— key")
         self._refresh_chips()
 
     # ── Internals ──────────────────────────────────────────────────────────
