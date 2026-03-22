@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QPushButton, QGroupBox, QInputDialog, QMessageBox, QLabel,
 )
+import activity_log
 import database as db
 
 _LIBRARY_ID = -1   # sentinel: "show all samples, no project filter"
@@ -128,6 +129,7 @@ class ProjectPanel(QWidget):
         if not ok or not name:
             return
         db.create_project(name)
+        activity_log.log(f"Project created: '{name}'")
         self.refresh()
         # Select the new project
         for i in range(self._list.count()):
@@ -148,6 +150,7 @@ class ProjectPanel(QWidget):
         if not ok or not name or name == old_name:
             return
         db.rename_project(pid, name)
+        activity_log.log(f"Project renamed: '{old_name}' → '{name}'")
         self.refresh()
 
     def _on_delete(self):
@@ -166,6 +169,7 @@ class ProjectPanel(QWidget):
         )
         if reply == QMessageBox.StandardButton.Yes:
             db.delete_project(pid)
+            activity_log.log(f"Project deleted: '{name}'")
             self.refresh()   # selection falls back to Library, which emits signal
 
     # ── Public API ─────────────────────────────────────────────────────────

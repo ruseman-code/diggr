@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QTextEdit, QGroupBox, QScrollArea, QSizePolicy,
     QFrame,
 )
+import activity_log
 import database as db
 from ui.filter_panel import DEFAULT_TAGS
 
@@ -278,6 +279,8 @@ class TagPanel(QWidget):
         if not self._current_path:
             return
         db.add_tag(self._current_path, tag)
+        import os
+        activity_log.log(f"Tag added: '{tag}' → {os.path.basename(self._current_path)}")
         self._refresh_chips()
         self.tags_changed.emit()
 
@@ -291,6 +294,8 @@ class TagPanel(QWidget):
         if not self._current_path:
             return
         db.remove_tag(self._current_path, tag)
+        import os
+        activity_log.log(f"Tag removed: '{tag}' from {os.path.basename(self._current_path)}")
         self._refresh_chips()
         self.tags_changed.emit()
 
@@ -298,6 +303,9 @@ class TagPanel(QWidget):
         if self._current_path:
             db.upsert_sample(self._current_path)
             db.set_rating(self._current_path, value)
+            import os
+            stars = f"{value}★" if value else "unrated"
+            activity_log.log(f"Rating set: {stars} → {os.path.basename(self._current_path)}")
             self.tags_changed.emit()
 
     def _notes_focus_out(self, event):

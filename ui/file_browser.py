@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QMenu, QInputDialog,
 )
 from PyQt6.QtGui import QAction
+import activity_log
 import config
 import database as db
 
@@ -428,6 +429,10 @@ class FileBrowser(QWidget):
     def _add_to_project(self, paths: List[str], project_id: int):
         for p in paths:
             db.add_to_project(p, project_id)
+        proj = next((pr for pr in db.get_projects() if pr["id"] == project_id), None)
+        proj_name = proj["name"] if proj else str(project_id)
+        n = len(paths)
+        activity_log.log(f"Added {n} file{'s' if n != 1 else ''} to project: {proj_name}")
         self.projects_modified.emit()
 
     def _add_to_new_project(self, paths: List[str]):
@@ -438,6 +443,8 @@ class FileBrowser(QWidget):
         pid = db.create_project(name)
         for p in paths:
             db.add_to_project(p, pid)
+        n = len(paths)
+        activity_log.log(f"Project created: '{name}' with {n} file{'s' if n != 1 else ''}")
         self.projects_modified.emit()
 
     def _remove_from_project(self, paths: List[str]):
@@ -445,6 +452,8 @@ class FileBrowser(QWidget):
             return
         for p in paths:
             db.remove_from_project(p, self._current_project_id)
+        n = len(paths)
+        activity_log.log(f"Removed {n} file{'s' if n != 1 else ''} from project")
         self.refresh()
         self.projects_modified.emit()
 

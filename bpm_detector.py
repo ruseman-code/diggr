@@ -72,7 +72,9 @@ class BpmDetector(QObject):
             bpm = self._estimate_bpm(y, sr, librosa)
             key = self._estimate_key(y, sr, librosa)
             return bpm, key
-        except Exception:
+        except Exception as exc:
+            import activity_log, os
+            activity_log.error(f"BPM/key analysis failed: {os.path.basename(path)} — {exc}")
             return 0.0, ""
 
     def _estimate_bpm(self, y, sr, librosa) -> float:

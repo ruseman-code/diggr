@@ -10,10 +10,12 @@ from PyQt6.QtWidgets import (
     QStatusBar, QPushButton, QLabel, QSplitter,
 )
 
+import activity_log
 import audio_player as player
 import config
 import database as db
 from bpm_detector import BpmDetector
+from ui.activity_log_dialog import ActivityLogDialog
 from ui.file_browser import FileBrowser
 from ui.filter_panel import FilterPanel
 from ui.export_dialog import ExportDialog
@@ -188,10 +190,11 @@ class MainWindow(QMainWindow):
             self.file_browser.load_folder(folder)
 
     def _connect_signals(self):
-        # Library toolbar → switch active library / health check / settings
+        # Library toolbar → switch active library / health check / settings / log
         self.library_toolbar.library_switched.connect(self._on_library_switched)
         self.library_toolbar.health_check_requested.connect(self._run_health_check)
         self.library_toolbar.settings_requested.connect(self._open_settings)
+        self.library_toolbar.activity_log_requested.connect(self._open_activity_log)
 
         # Filter panel → file browser
         self.filter_panel.filters_changed.connect(self._apply_filters)
@@ -220,6 +223,7 @@ class MainWindow(QMainWindow):
 
     def _on_scan_complete(self, all_paths: list):
         """Queue analysis for every file missing BPM or key."""
+        activity_log.log(f"Folder scanned: {len(all_paths)} file{'s' if len(all_paths) != 1 else ''} found")
         needs = [
             p for p in all_paths
             if not (s := db.get_sample(p)) or not s["bpm"] or not s["key"]
@@ -230,6 +234,7 @@ class MainWindow(QMainWindow):
             self._bpm_progress_label.setText(
                 f"Analysing {n} file{'s' if n != 1 else ''}…"
             )
+            activity_log.log(f"BPM/key detection started for {n} file{'s' if n != 1 else ''}")
             self._bpm_detector.detect_folder(needs)
         else:
             self._bpm_progress_label.setText("")
@@ -266,10 +271,16 @@ class MainWindow(QMainWindow):
                 f"Analysing {n} file{'s' if n != 1 else ''}…"
             )
         else:
+            if self._bpm_progress_label.text():
+                activity_log.log("BPM/key detection batch complete")
             self._bpm_progress_label.setText("")
 
     def _on_export_library(self):
         dlg = ExportDialog(self)
+        dlg.exec()
+
+    def _open_activity_log(self):
+        dlg = ActivityLogDialog(self)
         dlg.exec()
 
     def _run_health_check(self):
@@ -315,6 +326,10 @@ class MainWindow(QMainWindow):
 
     def _on_library_switched(self, lib_id: str):
         """Switch to a different library: swap DB, reload file browser."""
+        lib = config.get_library(lib_id)
+        lib_name = lib["name"] if lib else lib_id
+        activity_log.log(f"Switched to library: {lib_name}")
+
         # Stop any in-flight BPM analysis.
         self._bpm_detector.cancel()
         self._bpm_pending = 0

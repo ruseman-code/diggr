@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QFont, QColor
 
+import activity_log
 import config
 import database as db
 
@@ -99,6 +100,17 @@ class HealthCheckDialog(QDialog):
         config.set_last_health_check()
         self._report = db.get_health_report()
         self._populate(self._report)
+        r = self._report
+        issue_count = (
+            len(r["missing"]) + len(r["duplicates"]) + len(r["untagged"])
+            + len(r["no_bpm"]) + len(r["no_rating"])
+        )
+        activity_log.log(
+            f"Health check: {r['total']} samples, {issue_count} issue{'s' if issue_count != 1 else ''} "
+            f"(missing={len(r['missing'])}, duplicates={len(r['duplicates'])}, "
+            f"untagged={len(r['untagged'])}, no_bpm={len(r['no_bpm'])}, "
+            f"no_rating={len(r['no_rating'])})"
+        )
 
     def _clear_sections(self):
         layout = self._sections_layout
@@ -183,6 +195,7 @@ class HealthCheckDialog(QDialog):
             for p in paths:
                 db.remove_sample(p)
             self.files_were_removed = True
+            activity_log.log(f"Removed {n} missing file{'s' if n != 1 else ''} from database")
             btn.setText("✓  Done — entries removed")
             btn.setEnabled(False)
             grp.setTitle(f"Missing files  (resolved)")
@@ -247,6 +260,7 @@ class HealthCheckDialog(QDialog):
 
         def do_bpm():
             self.bpm_paths = list(paths)
+            activity_log.log(f"BPM detection requested for {n} file{'s' if n != 1 else ''} (from health check)")
             btn.setText("✓  BPM detection will start when this dialog closes")
             btn.setEnabled(False)
 

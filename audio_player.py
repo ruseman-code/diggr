@@ -64,8 +64,9 @@ def play(path: str, normalise: bool = False):
         pygame.mixer.music.load(str(p))
         pygame.mixer.music.set_volume(volume)
         pygame.mixer.music.play()
-    except pygame.error:
-        pass
+    except pygame.error as exc:
+        import activity_log
+        activity_log.error(f"Playback failed: {os.path.basename(path)} — {exc}")
 
 
 def stop():

@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QFrame,
 )
 
+import activity_log
 import config
 import database as db
 
@@ -175,6 +176,8 @@ class ExportDialog(QDialog):
             return
 
         n = len(samples)
+        fmt = "CSV" if self._csv_radio.isChecked() else "JSON"
+        activity_log.log(f"Library exported: {n} sample{'s' if n != 1 else ''} as {fmt} → {dest}")
         QMessageBox.information(
             self, "Export complete",
             f"Exported {n} sample{'s' if n != 1 else ''} to:\n{dest}",

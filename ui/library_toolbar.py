@@ -23,6 +23,7 @@ class LibraryToolbar(QToolBar):
     library_switched = pyqtSignal(str)   # lib_id
     health_check_requested = pyqtSignal()
     settings_requested = pyqtSignal()
+    activity_log_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__("Library", parent)
@@ -87,6 +88,17 @@ class LibraryToolbar(QToolBar):
         self._settings_btn.setToolTip("Open settings")
         self._settings_btn.clicked.connect(self.settings_requested)
         hl.addWidget(self._settings_btn)
+
+        sep3 = QFrame()
+        sep3.setFrameShape(QFrame.Shape.VLine)
+        sep3.setStyleSheet("color: #45475a;")
+        sep3.setFixedWidth(1)
+        hl.addWidget(sep3)
+
+        self._log_btn = QPushButton("Activity Log")
+        self._log_btn.setToolTip("View the activity log")
+        self._log_btn.clicked.connect(self.activity_log_requested)
+        hl.addWidget(self._log_btn)
 
         self.addWidget(container)
 
