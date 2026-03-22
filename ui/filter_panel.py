@@ -31,6 +31,15 @@ class FilterPanel(QWidget):
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(10)
 
+        # Smart search bar (primary)
+        grp_smart = QGroupBox("Search")
+        smart_vl = QVBoxLayout(grp_smart)
+        self.smart_edit = QLineEdit()
+        self.smart_edit.setPlaceholderText("filename, tag, key, BPM, notes…")
+        self.smart_edit.textChanged.connect(self.filters_changed)
+        smart_vl.addWidget(self.smart_edit)
+        root.addWidget(grp_smart)
+
         # Name search
         grp_search = QGroupBox("Search filename")
         vl = QVBoxLayout(grp_search)
@@ -144,6 +153,10 @@ class FilterPanel(QWidget):
         self.bpm_max_spin.setValue(174)
 
     # ── Public API ─────────────────────────────────────────────────────────
+
+    @property
+    def smart_query(self) -> str:
+        return self.smart_edit.text().strip()
 
     @property
     def name_query(self) -> str:

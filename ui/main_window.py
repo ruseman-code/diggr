@@ -1,5 +1,8 @@
 """Main application window – wires together the three panels."""
 
+import shutil
+from pathlib import Path
+
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
@@ -13,6 +16,7 @@ import database as db
 from bpm_detector import BpmDetector
 from ui.file_browser import FileBrowser
 from ui.filter_panel import FilterPanel
+from ui.library_toolbar import LibraryToolbar
 from ui.project_panel import ProjectPanel, _LIBRARY_ID
 from ui.tag_panel import TagPanel
 from ui.waveform_widget import WaveformWidget
@@ -27,6 +31,7 @@ class MainWindow(QMainWindow):
         self._font_size = 13
         self._bpm_pending = 0
         self._bpm_detector = BpmDetector(self)
+        self._setup_active_library()  # migration + active DB path; must precede init_db
         db.init_db()
         self._build_ui()
         self._apply_stylesheet()
@@ -36,6 +41,10 @@ class MainWindow(QMainWindow):
     # ── Build ─────────────────────────────────────────────────────────────
 
     def _build_ui(self):
+        # Library toolbar (top of window)
+        self.library_toolbar = LibraryToolbar(self)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.library_toolbar)
+
         central = QWidget()
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
@@ -140,12 +149,64 @@ class MainWindow(QMainWindow):
 
     # ── Signals ───────────────────────────────────────────────────────────
 
+    def _setup_active_library(self):
+        """One-time migration to the multi-library system, then point database.py
+        at the correct SQLite file for the active library.
+
+        Safe to call on every launch — is a no-op after the first run.
+        """
+        if config.is_libraries_migrated():
+            # Already migrated: just wire up the DB path.
+            lib_id = config.get_active_library_id()
+            if lib_id:
+                db.set_active_db(config.db_path_for_library(lib_id))
+            return
+
+        # ── First launch after the multi-library update ───────────────────
+        # Read raw old config values before the new schema overwrites them.
+        raw = {}
+        try:
+            import json
+            raw = json.loads((Path.home() / ".sample_organiser" / "config.json").read_text())
+        except Exception:
+            pass
+
+        old_root = raw.get("library_root", "") or raw.get("last_folder", "")
+        old_last  = raw.get("last_folder", "")
+        old_paths_migrated = raw.get("paths_migrated", False)
+
+        # Create the Default library entry.
+        lib_id = config.create_library("Default", old_root)
+        if old_last:
+            config.set_last_folder(old_last)      # writes into the library entry
+        config.set_active_library(lib_id)
+
+        # Set up the DB directory and path.
+        config.LIBRARIES_DIR.mkdir(parents=True, exist_ok=True)
+        new_db = config.db_path_for_library(lib_id)
+        db.set_active_db(new_db)
+
+        # Copy the old monolithic library.db into the new location.
+        legacy = Path.home() / ".sample_organiser" / "library.db"
+        if legacy.exists() and not new_db.exists():
+            shutil.copy2(legacy, new_db)
+
+        # Initialise schema on the new DB, then migrate paths if needed.
+        db.init_db()
+        if old_root and not old_paths_migrated:
+            db.migrate_to_relative_paths(old_root)
+
+        config.set_libraries_migrated()
+
     def _restore_last_folder(self):
         folder = config.get_last_folder()
         if folder:
             self.file_browser.load_folder(folder)
 
     def _connect_signals(self):
+        # Library toolbar → switch active library
+        self.library_toolbar.library_switched.connect(self._on_library_switched)
+
         # Filter panel → file browser
         self.filter_panel.filters_changed.connect(self._apply_filters)
 
@@ -220,6 +281,34 @@ class MainWindow(QMainWindow):
         else:
             self._bpm_progress_label.setText("")
 
+    def _on_library_switched(self, lib_id: str):
+        """Switch to a different library: swap DB, reload file browser."""
+        # Stop any in-flight BPM analysis.
+        self._bpm_detector.cancel()
+        self._bpm_pending = 0
+        self._bpm_progress_label.setText("")
+
+        # Update config and DB connection.
+        config.set_active_library(lib_id)
+        db.set_active_db(config.db_path_for_library(lib_id))
+        db.init_db()
+
+        # Refresh toolbar and project panel (they read from the new DB/config).
+        self.library_toolbar.refresh()
+        self.project_panel.refresh()
+
+        # Clear current playback and tag panel.
+        self._stop_playback()
+        self.tag_panel.clear()
+        self._current_path = None
+
+        # Load the library's last folder, or clear the browser if none set.
+        folder = config.get_last_folder()
+        if folder:
+            self.file_browser.load_folder(folder)
+        else:
+            self.file_browser.clear_folder()
+
     def _on_project_changed(self, project_id: int):
         # _LIBRARY_ID (-1) → no project filter
         self.file_browser.set_project(
@@ -234,6 +323,7 @@ class MainWindow(QMainWindow):
             self.filter_panel.min_bpm,
             self.filter_panel.max_bpm,
             self.filter_panel.key_filter,
+            self.filter_panel.smart_query,
         )
         self.filter_panel.refresh_tags()
 

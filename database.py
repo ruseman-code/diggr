@@ -6,13 +6,30 @@ import os
 from pathlib import Path
 from typing import Optional
 
+import config
 
-DB_PATH = Path.home() / ".sample_organiser" / "library.db"
+
+# Legacy single-file path — used as fallback before library migration runs.
+_LEGACY_DB_PATH = Path.home() / ".sample_organiser" / "library.db"
+
+# Active library DB path — set by set_active_db() on startup and on switch.
+_active_db_path: Optional[Path] = None
+
+
+def set_active_db(path: Path):
+    """Point all subsequent DB operations at *path*."""
+    global _active_db_path
+    _active_db_path = path
+
+
+def _db_path() -> Path:
+    return _active_db_path or _LEGACY_DB_PATH
 
 
 def get_connection() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    p = _db_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(p))
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -67,15 +84,85 @@ def init_db():
                 pass  # column already exists
 
 
-# ── Samples ──────────────────────────────────────────────────────────────────
+# ── Path helpers ──────────────────────────────────────────────────────────────
+# All DB functions receive/return *absolute* paths in their public API.
+# These helpers convert at the boundary so the DB always stores relative paths.
+
+def _rel(path: str) -> str:
+    """Absolute → relative (for storing in DB)."""
+    return config.to_relative(path)
+
+
+def _abs(path: str) -> str:
+    """Relative → absolute (for returning to callers)."""
+    return config.to_absolute(path)
+
+
+# ── Migration helpers ─────────────────────────────────────────────────────────
+
+def migrate_to_relative_paths(library_root: str):
+    """One-time migration: rewrite all stored absolute paths as relative paths.
+
+    Paths that fall outside *library_root* are left unchanged (absolute
+    fallback).  Safe to call multiple times – unchanged rows are skipped.
+    """
+    if not library_root:
+        return
+    with get_connection() as conn:
+        rows = conn.execute("SELECT id, path FROM samples").fetchall()
+        for row in rows:
+            stored = row["path"]
+            p = Path(stored)
+            if not p.is_absolute():
+                continue  # already relative
+            try:
+                rel = str(p.relative_to(library_root))
+                if rel != stored:
+                    conn.execute(
+                        "UPDATE samples SET path = ? WHERE id = ?",
+                        (rel, row["id"]),
+                    )
+            except ValueError:
+                pass  # outside root, leave as absolute
+
+
+def change_library_root(old_root: str, new_root: str):
+    """Re-relativize every stored path from *old_root* to *new_root*.
+
+    Used when the user confirms a library-root change (e.g. they opened a
+    folder outside the current root and agreed to move the root up to the
+    common ancestor).
+    """
+    if not new_root:
+        return
+    with get_connection() as conn:
+        rows = conn.execute("SELECT id, path FROM samples").fetchall()
+        for row in rows:
+            stored = row["path"]
+            # Reconstruct absolute regardless of how it's stored
+            p = Path(stored)
+            abs_path = stored if p.is_absolute() else str(Path(old_root) / stored)
+            try:
+                new_rel = str(Path(abs_path).relative_to(new_root))
+                if new_rel != stored:
+                    conn.execute(
+                        "UPDATE samples SET path = ? WHERE id = ?",
+                        (new_rel, row["id"]),
+                    )
+            except ValueError:
+                pass  # outside new_root, leave as-is
+
+
+# ── Samples ───────────────────────────────────────────────────────────────────
 
 def upsert_sample(path: str) -> int:
+    rel = _rel(path)
     with get_connection() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO samples (path) VALUES (?)", (path,)
+            "INSERT OR IGNORE INTO samples (path) VALUES (?)", (rel,)
         )
         row = conn.execute(
-            "SELECT id FROM samples WHERE path = ?", (path,)
+            "SELECT id FROM samples WHERE path = ?", (rel,)
         ).fetchone()
         return row["id"]
 
@@ -83,7 +170,7 @@ def upsert_sample(path: str) -> int:
 def set_rating(path: str, rating: int):
     with get_connection() as conn:
         conn.execute(
-            "UPDATE samples SET rating = ? WHERE path = ?", (rating, path)
+            "UPDATE samples SET rating = ? WHERE path = ?", (rating, _rel(path))
         )
 
 
@@ -92,7 +179,7 @@ def set_bpm(path: str, bpm: float):
     value = bpm if bpm > 0 else None
     with get_connection() as conn:
         conn.execute(
-            "UPDATE samples SET bpm = ? WHERE path = ?", (value, path)
+            "UPDATE samples SET bpm = ? WHERE path = ?", (value, _rel(path))
         )
 
 
@@ -101,21 +188,21 @@ def set_key(path: str, key: str):
     value = key if key else None
     with get_connection() as conn:
         conn.execute(
-            "UPDATE samples SET key = ? WHERE path = ?", (value, path)
+            "UPDATE samples SET key = ? WHERE path = ?", (value, _rel(path))
         )
 
 
 def set_notes(path: str, notes: str):
     with get_connection() as conn:
         conn.execute(
-            "UPDATE samples SET notes = ? WHERE path = ?", (notes, path)
+            "UPDATE samples SET notes = ? WHERE path = ?", (notes, _rel(path))
         )
 
 
 def get_sample(path: str) -> Optional[sqlite3.Row]:
     with get_connection() as conn:
         return conn.execute(
-            "SELECT * FROM samples WHERE path = ?", (path,)
+            "SELECT * FROM samples WHERE path = ?", (_rel(path),)
         ).fetchone()
 
 
@@ -151,7 +238,7 @@ def remove_tag(path: str, tag: str):
             DELETE FROM sample_tags
             WHERE sample_id = (SELECT id FROM samples WHERE path = ?)
               AND tag_id    = (SELECT id FROM tags    WHERE name = ?)
-        """, (path, tag))
+        """, (_rel(path), tag))
 
 
 def tags_for_sample(path: str) -> "list[str]":
@@ -162,11 +249,11 @@ def tags_for_sample(path: str) -> "list[str]":
             JOIN samples s      ON s.id = st.sample_id
             WHERE s.path = ?
             ORDER BY t.name
-        """, (path,)).fetchall()
+        """, (_rel(path),)).fetchall()
         return [r["name"] for r in rows]
 
 
-# ── Projects ─────────────────────────────────────────────────────────────────
+# ── Projects ──────────────────────────────────────────────────────────────────
 
 def get_projects() -> list:
     with get_connection() as conn:
@@ -210,7 +297,7 @@ def remove_from_project(path: str, project_id: int):
             DELETE FROM project_samples
             WHERE project_id = ?
               AND sample_id  = (SELECT id FROM samples WHERE path = ?)
-        """, (project_id, path))
+        """, (project_id, _rel(path)))
 
 
 def project_sample_count(project_id: int) -> int:
@@ -233,18 +320,60 @@ def search_samples(
     max_bpm: int = 0,
     key_filter: str = "",
     project_id: Optional[int] = None,
+    smart_query: str = "",
 ) -> list:
     """Return rows for samples matching all active filters.
 
     When *project_id* is set the folder prefix filter is skipped so the project
     can contain samples from any location on disk.
+
+    *smart_query* performs an OR search across filename, notes, key, tags and
+    BPM (fuzzy ±5 if the query looks like a number).
+
+    All returned rows are dicts with absolute paths.
     """
     clauses: list = []
     params:  list = []
 
+    # Folder filter — convert absolute folder to relative for LIKE matching
     if folder and project_id is None:
-        clauses.append("s.path LIKE ?")
-        params.append(f"{folder}%")
+        root = config.get_library_root()
+        if root:
+            try:
+                rel_folder = str(Path(folder).relative_to(root))
+                if rel_folder != ".":
+                    # subfolder within root
+                    clauses.append("s.path LIKE ?")
+                    params.append(f"{rel_folder}%")
+                # else: folder IS the root, all relative paths are in scope
+            except ValueError:
+                # folder is outside root (or root unset) — use absolute LIKE
+                clauses.append("s.path LIKE ?")
+                params.append(f"{folder}%")
+        else:
+            clauses.append("s.path LIKE ?")
+            params.append(f"{folder}%")
+
+    if smart_query:
+        q = smart_query.strip()
+        like = f"%{q}%"
+        or_parts = [
+            "s.path LIKE ?",
+            "s.notes LIKE ?",
+            "s.key LIKE ?",
+            "EXISTS (SELECT 1 FROM sample_tags st2 JOIN tags t2 ON t2.id = st2.tag_id"
+            " WHERE st2.sample_id = s.id AND t2.name LIKE ?)",
+        ]
+        or_params = [like, like, like, like]
+        try:
+            bpm_val = float(q)
+            if 20.0 <= bpm_val <= 400.0:
+                or_parts.append("(s.bpm IS NOT NULL AND ABS(s.bpm - ?) <= 5)")
+                or_params.append(bpm_val)
+        except ValueError:
+            pass
+        clauses.append("(" + " OR ".join(or_parts) + ")")
+        params.extend(or_params)
 
     if name_query:
         clauses.append("s.path LIKE ?")
@@ -299,7 +428,15 @@ def search_samples(
         ORDER BY s.path
     """
     with get_connection() as conn:
-        return conn.execute(sql, params).fetchall()
+        rows = conn.execute(sql, params).fetchall()
+
+    # Convert stored (relative) paths back to absolute for callers
+    result = []
+    for row in rows:
+        d = dict(row)
+        d["path"] = _abs(d["path"])
+        result.append(d)
+    return result
 
 
 # ── Export ────────────────────────────────────────────────────────────────────

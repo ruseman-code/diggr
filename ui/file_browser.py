@@ -14,9 +14,24 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QMenu, QInputDialog,
 )
 from PyQt6.QtGui import QAction
+import config
 import database as db
 
 AUDIO_EXTS = {".mp3", ".wav", ".aiff", ".aif", ".flac", ".ogg"}
+
+
+def _common_ancestor(path_a: str, path_b: str) -> str:
+    """Return the deepest common ancestor directory of two paths."""
+    parts_a = Path(path_a).parts
+    parts_b = Path(path_b).parts
+    common = []
+    for a, b in zip(parts_a, parts_b):
+        if a == b:
+            common.append(a)
+        else:
+            break
+    return str(Path(*common)) if common else str(Path(path_a).anchor)
+
 
 # Column indices
 COL_NAME   = 0
@@ -139,6 +154,36 @@ class FileBrowser(QWidget):
             self.load_folder(folder)
 
     def load_folder(self, folder: str):
+        """Load *folder*, updating the library root if necessary."""
+        folder = str(Path(folder))  # normalise separators / trailing slashes
+        library_root = config.get_library_root()
+
+        if library_root:
+            try:
+                Path(folder).relative_to(library_root)
+                # folder is inside the current library root — no change needed
+            except ValueError:
+                # folder is outside the current root; compute common ancestor
+                new_root = _common_ancestor(folder, library_root)
+                from PyQt6.QtWidgets import QMessageBox
+                reply = QMessageBox.question(
+                    self,
+                    "Update library root?",
+                    f"The selected folder is outside your current library root:\n"
+                    f"  {library_root}\n\n"
+                    f"Update the library root to:\n"
+                    f"  {new_root}\n\n"
+                    f"Existing sample paths will be re-indexed automatically.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                )
+                if reply != QMessageBox.StandardButton.Yes:
+                    return
+                db.change_library_root(library_root, new_root)
+                config.set_library_root(new_root)
+        else:
+            # First time — set the library root to the chosen folder
+            config.set_library_root(folder)
+
         self._folder = folder
         self.folder_label.setText(folder)
         self.folder_changed.emit(folder)
@@ -173,6 +218,7 @@ class FileBrowser(QWidget):
         min_bpm: int = 0,
         max_bpm: int = 0,
         key_filter: str = "",
+        smart_query: str = "",
     ):
         # In project mode a folder isn't required
         if not self._folder and self._current_project_id is None:
@@ -187,6 +233,7 @@ class FileBrowser(QWidget):
             max_bpm=max_bpm,
             key_filter=key_filter,
             project_id=self._current_project_id,
+            smart_query=smart_query,
         )
 
         self._model.removeRows(0, self._model.rowCount())
@@ -328,6 +375,7 @@ class FileBrowser(QWidget):
         min_bpm: int = 0,
         max_bpm: int = 0,
         key_filter: str = "",
+        smart_query: str = "",
     ):
         self.refresh(
             name_query=name_query,
@@ -336,6 +384,7 @@ class FileBrowser(QWidget):
             min_bpm=min_bpm,
             max_bpm=max_bpm,
             key_filter=key_filter,
+            smart_query=smart_query,
         )
 
     # ── Context menu (right-click) ─────────────────────────────────────────
@@ -398,6 +447,14 @@ class FileBrowser(QWidget):
             db.remove_from_project(p, self._current_project_id)
         self.refresh()
         self.projects_modified.emit()
+
+    def clear_folder(self):
+        """Reset to an empty state (used when a newly created library has no folder)."""
+        self._folder = ""
+        self._current_project_id = None
+        self.folder_label.setText("No folder loaded")
+        self._model.removeRows(0, self._model.rowCount())
+        self.count_label.setText("")
 
     @property
     def current_folder(self) -> str:
