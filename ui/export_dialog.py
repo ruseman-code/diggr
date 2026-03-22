@@ -144,9 +144,11 @@ class ExportDialog(QDialog):
         filter_str = (
             "CSV files (*.csv)" if ext == "csv" else "JSON files (*.json)"
         )
+        # Start in the user-configured default export folder if set
+        start_dir = config.get_default_export_folder() or str(Path.home())
         path, _ = QFileDialog.getSaveFileName(
             self, "Export library data",
-            str(Path.home() / default_name),
+            str(Path(start_dir) / default_name),
             f"{filter_str};;All files (*)",
         )
         if path:

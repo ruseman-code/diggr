@@ -19,6 +19,7 @@ from ui.filter_panel import FilterPanel
 from ui.export_dialog import ExportDialog
 from ui.health_check_dialog import HealthCheckDialog
 from ui.library_toolbar import LibraryToolbar
+from ui.settings_dialog import SettingsDialog
 from ui.project_panel import ProjectPanel, _LIBRARY_ID
 from ui.tag_panel import TagPanel
 from ui.waveform_widget import WaveformWidget
@@ -30,7 +31,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Sample Organiser")
         self.resize(1200, 800)
         self._current_path = None
-        self._font_size = 13
+        self._font_size = config.get_font_size()
         self._bpm_pending = 0
         self._bpm_detector = BpmDetector(self)
         self._setup_active_library()  # migration + active DB path; must precede init_db
@@ -112,37 +113,6 @@ class MainWindow(QMainWindow):
         self._stop_btn.hide()
         self.status_bar.addPermanentWidget(self._stop_btn)
 
-        # Font size controls – grouped in one widget so the status bar
-        # allocates space correctly and they're never clipped.
-        font_ctrl = QWidget()
-        font_ctrl.setStyleSheet("background: transparent;")
-        font_hl = QHBoxLayout(font_ctrl)
-        font_hl.setContentsMargins(8, 0, 8, 0)
-        font_hl.setSpacing(4)
-
-        font_dec = QPushButton("A−")
-        font_dec.setFlat(True)
-        font_dec.setMinimumWidth(40)
-        font_dec.setToolTip("Decrease font size  (⌘−)")
-        font_dec.clicked.connect(self._font_decrease)
-
-        self._font_size_label = QLabel("13px")
-        self._font_size_label.setStyleSheet("color: #6c7086;")
-        self._font_size_label.setMinimumWidth(38)
-        self._font_size_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        font_inc = QPushButton("A+")
-        font_inc.setFlat(True)
-        font_inc.setMinimumWidth(40)
-        font_inc.setToolTip("Increase font size  (⌘+)")
-        font_inc.clicked.connect(self._font_increase)
-
-        font_hl.addWidget(font_dec)
-        font_hl.addWidget(self._font_size_label)
-        font_hl.addWidget(font_inc)
-
-        self.status_bar.addPermanentWidget(font_ctrl)
-
         # Keyboard shortcuts
         QShortcut(QKeySequence("Space"), self).activated.connect(
             self._toggle_playback
@@ -218,9 +188,10 @@ class MainWindow(QMainWindow):
             self.file_browser.load_folder(folder)
 
     def _connect_signals(self):
-        # Library toolbar → switch active library / health check
+        # Library toolbar → switch active library / health check / settings
         self.library_toolbar.library_switched.connect(self._on_library_switched)
         self.library_toolbar.health_check_requested.connect(self._run_health_check)
+        self.library_toolbar.settings_requested.connect(self._open_settings)
 
         # Filter panel → file browser
         self.filter_panel.filters_changed.connect(self._apply_filters)
@@ -268,7 +239,8 @@ class MainWindow(QMainWindow):
         db.upsert_sample(path)
         self.tag_panel.load_sample(path)
         self.waveform.load(path)
-        self._play_file(path)
+        if config.get_auto_play():
+            self._play_file(path)
 
     def _on_analysis_ready(self, path: str, bpm: float, key: str):
         db.set_bpm(path, bpm)
@@ -389,7 +361,7 @@ class MainWindow(QMainWindow):
 
     def _play_file(self, path: str):
         self._current_path = path
-        player.play(path)
+        player.play(path, normalise=config.get_normalise_playback())
         import os
         self._now_playing_label.setText(f"▶  {os.path.basename(path)}")
         self._stop_btn.show()
@@ -418,14 +390,25 @@ class MainWindow(QMainWindow):
     def _font_increase(self):
         if self._font_size < 24:
             self._font_size += 1
-            self._font_size_label.setText(f"{self._font_size}px")
+            config.set_font_size(self._font_size)
             self._apply_stylesheet()
 
     def _font_decrease(self):
         if self._font_size > 9:
             self._font_size -= 1
-            self._font_size_label.setText(f"{self._font_size}px")
+            config.set_font_size(self._font_size)
             self._apply_stylesheet()
+
+    def _open_settings(self):
+        dlg = SettingsDialog(self)
+        dlg.font_size_changed.connect(self._on_settings_font_size)
+        dlg.library_root_change_requested.connect(self.file_browser.load_folder)
+        dlg.exec()
+
+    def _on_settings_font_size(self, size: int):
+        """Apply a font size change from the Settings dialog."""
+        self._font_size = size
+        self._apply_stylesheet()
 
     # ── Stylesheet ────────────────────────────────────────────────────────
 

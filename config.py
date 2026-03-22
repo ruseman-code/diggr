@@ -177,6 +177,66 @@ def to_absolute(path: str) -> str:
     return str(Path(root) / path)
 
 
+# ── Global user preferences ───────────────────────────────────────────────────
+# These are stored at the top level of config.json (not per-library).
+
+def get_api_key() -> str:
+    return _load().get("api_key", "")
+
+
+def set_api_key(key: str):
+    data = _load()
+    data["api_key"] = key
+    _save(data)
+
+
+def get_default_export_folder() -> str:
+    folder = _load().get("default_export_folder", "")
+    return folder if folder and Path(folder).is_dir() else ""
+
+
+def set_default_export_folder(folder: str):
+    data = _load()
+    data["default_export_folder"] = folder
+    _save(data)
+
+
+def get_normalise_playback() -> bool:
+    return bool(_load().get("normalise_playback", False))
+
+
+def set_normalise_playback(enabled: bool):
+    data = _load()
+    data["normalise_playback"] = enabled
+    _save(data)
+
+
+def get_auto_play() -> bool:
+    return bool(_load().get("auto_play", True))
+
+
+def set_auto_play(enabled: bool):
+    data = _load()
+    data["auto_play"] = enabled
+    _save(data)
+
+
+def get_font_size() -> int:
+    return max(9, min(24, int(_load().get("font_size", 13))))
+
+
+def set_font_size(size: int):
+    data = _load()
+    data["font_size"] = size
+    _save(data)
+
+
+def clear_smart_organise_conventions():
+    data = _load()
+    data.pop("smart_organise_conventions", None)
+    _save(data)
+
+
 # ── Health check ─────────────────────────────────────────────────────────────
 
 def get_last_health_check() -> str:

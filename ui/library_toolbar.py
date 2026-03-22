@@ -22,6 +22,7 @@ class LibraryToolbar(QToolBar):
 
     library_switched = pyqtSignal(str)   # lib_id
     health_check_requested = pyqtSignal()
+    settings_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__("Library", parent)
@@ -75,6 +76,17 @@ class LibraryToolbar(QToolBar):
         self._health_btn.setToolTip("Scan the active library for issues")
         self._health_btn.clicked.connect(self.health_check_requested)
         hl.addWidget(self._health_btn)
+
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.Shape.VLine)
+        sep2.setStyleSheet("color: #45475a;")
+        sep2.setFixedWidth(1)
+        hl.addWidget(sep2)
+
+        self._settings_btn = QPushButton("⚙ Settings")
+        self._settings_btn.setToolTip("Open settings")
+        self._settings_btn.clicked.connect(self.settings_requested)
+        hl.addWidget(self._settings_btn)
 
         self.addWidget(container)
 
