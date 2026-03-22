@@ -286,7 +286,7 @@ class MainWindow(QMainWindow):
 
     def _on_smart_organise(self):
         """Entry point for the Smart Organise feature."""
-        from PyQt6.QtWidgets import QDialog, QMessageBox
+        from PyQt6.QtWidgets import QDialog, QFileDialog, QMessageBox
         from ui.smart_organise_dialog import SmartOrganiseDialog
         from ui.smart_organise_preview_dialog import SmartOrganisePreviewDialog
 
@@ -304,8 +304,22 @@ class MainWindow(QMainWindow):
                 self._open_settings()
             return
 
+        # Folder picker — default to the currently open folder
+        default_dir = (
+            self.file_browser.current_folder
+            or config.get_library_root()
+            or str(__import__("pathlib").Path.home())
+        )
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Choose folder to organise",
+            default_dir,
+        )
+        if not folder:
+            return   # user cancelled
+
         # Step 1 – API call
-        api_dlg = SmartOrganiseDialog(self)
+        api_dlg = SmartOrganiseDialog(folder=folder, parent=self)
         if api_dlg.exec() != QDialog.DialogCode.Accepted:
             return
 

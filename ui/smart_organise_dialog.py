@@ -7,6 +7,7 @@ exec() == Accepted.
 from __future__ import annotations
 
 import json
+import os
 import threading
 import urllib.error
 import urllib.request
@@ -99,15 +100,20 @@ the path genuinely changes.
 # ── Dialog ────────────────────────────────────────────────────────────────────
 
 class SmartOrganiseDialog(QDialog):
-    """Step 1 dialog: shows mode, runs API call, stores result_data on accept."""
+    """Step 1 dialog: shows mode, runs API call, stores result_data on accept.
+
+    Pass *folder* (absolute path) to scope the analysis to files under that
+    directory only.  All samples in the library are used if folder is empty.
+    """
 
     _api_done = pyqtSignal(object, str)   # (result dict or None, error string)
 
-    def __init__(self, parent=None):
+    def __init__(self, folder: str = "", parent=None):
         super().__init__(parent)
         self.setWindowTitle("Smart Organise")
         self.setMinimumWidth(520)
         self.result_data: Optional[dict] = None
+        self._folder      = folder
         self._conventions = config.get_smart_organise_conventions()
         self._build_ui()
         self._api_done.connect(self._on_api_done)
@@ -119,17 +125,28 @@ class SmartOrganiseDialog(QDialog):
         root.setSpacing(12)
         root.setContentsMargins(16, 16, 16, 16)
 
-        is_inc = bool(self._conventions)
-        lib     = config.get_active_library()
+        is_inc   = bool(self._conventions)
+        lib      = config.get_active_library()
         lib_name = lib["name"] if lib else "Default"
-        samples  = db.get_all_samples_for_export()
+
+        # Filter samples to the chosen folder
+        all_samples = db.get_all_samples_for_export()
+        if self._folder:
+            folder_prefix = self._folder.rstrip("/\\") + os.sep
+            samples = [
+                s for s in all_samples
+                if s["path"] == self._folder
+                or s["path"].startswith(folder_prefix)
+            ]
+        else:
+            samples = all_samples
         n = len(samples)
         self._samples_cache = samples
 
         # Mode badge
         if is_inc:
             badge = QLabel(
-                "◎  Incremental update  —  applying saved conventions to new files"
+                "◎  Incremental update  —  applying saved conventions"
             )
             badge.setStyleSheet(
                 "color: #a6e3a1; background: #1e3a2a; "
@@ -137,7 +154,7 @@ class SmartOrganiseDialog(QDialog):
             )
         else:
             badge = QLabel(
-                "◎  First-time full organise  —  Claude will create conventions"
+                "◎  First-time organise  —  Claude will create conventions"
             )
             badge.setStyleSheet(
                 "color: #89b4fa; background: #1e2a3a; "
@@ -145,11 +162,15 @@ class SmartOrganiseDialog(QDialog):
             )
         root.addWidget(badge)
 
+        folder_display = self._folder or "(entire library)"
         info = QLabel(
-            f"Library: <b>{lib_name}</b>"
-            f"  •  {n} sample{'s' if n != 1 else ''}"
+            f"Library: <b>{lib_name}</b>  •  "
+            f"Folder: <b>{os.path.basename(self._folder) or lib_name}</b>  •  "
+            f"{n} sample{'s' if n != 1 else ''}"
         )
         info.setStyleSheet("color: #888; font-size: 12px;")
+        info.setToolTip(folder_display)
+        info.setWordWrap(True)
         root.addWidget(info)
 
         if is_inc and self._conventions:
@@ -168,8 +189,8 @@ class SmartOrganiseDialog(QDialog):
         root.addWidget(sep)
 
         self._status_label = QLabel(
-            "Claude will analyse your samples and suggest a reorganised\n"
-            "folder structure and file renames.\n\n"
+            f"Claude will analyse the {n} sample{'s' if n != 1 else ''} in this "
+            f"folder and suggest a reorganised structure and file renames.\n\n"
             "This usually takes 20–60 seconds."
         )
         self._status_label.setWordWrap(True)
@@ -219,13 +240,14 @@ class SmartOrganiseDialog(QDialog):
         )
         threading.Thread(
             target=self._worker,
-            args=(self._samples_cache, config.get_api_key(), self._conventions),
+            args=(self._samples_cache, config.get_api_key(),
+                  self._conventions, self._folder),
             daemon=True,
         ).start()
 
-    def _worker(self, samples, api_key, conventions):
+    def _worker(self, samples, api_key, conventions, folder):
         try:
-            result = _call_claude(samples, api_key, conventions)
+            result = _call_claude(samples, api_key, conventions, folder)
             self._api_done.emit(result, "")
         except Exception as exc:
             self._api_done.emit(None, str(exc))
@@ -244,9 +266,10 @@ class SmartOrganiseDialog(QDialog):
 
         n_ops     = len(result.get("operations", []))
         n_folders = len(result.get("folders", []))
+        folder_label = os.path.basename(self._folder) if self._folder else "library"
         activity_log.log(
-            f"Smart Organise: Claude returned {n_ops} operation(s), "
-            f"{n_folders} folder(s)"
+            f"Smart Organise ({folder_label}): Claude returned "
+            f"{n_ops} operation(s), {n_folders} folder(s)"
         )
         self.result_data = result
         self.accept()
@@ -254,15 +277,27 @@ class SmartOrganiseDialog(QDialog):
 
 # ── API helpers ───────────────────────────────────────────────────────────────
 
-def _build_message(samples: list, conventions: Optional[dict]) -> str:
+def _build_message(samples: list, conventions: Optional[dict],
+                   folder: str = "") -> str:
     lib      = config.get_active_library()
     lib_name = lib["name"] if lib else "Default"
     lib_root = lib["root"] if lib else ""
 
+    # Describe the scope so Claude understands it's a sub-folder run
+    if folder and lib_root:
+        try:
+            rel_folder = str(Path(folder).relative_to(lib_root))
+        except ValueError:
+            rel_folder = folder
+        scope_line = f"Scope: files under '{rel_folder}/' only"
+    else:
+        scope_line = "Scope: entire library"
+
     lines = [
         f"Library name: {lib_name}",
         f"Library root: {lib_root}",
-        f"Total samples: {len(samples)}",
+        scope_line,
+        f"Samples in scope: {len(samples)}",
         "",
         "Sample metadata (JSON array — paths are relative to library root):",
     ]
@@ -301,7 +336,8 @@ def _build_message(samples: list, conventions: Optional[dict]) -> str:
 
 
 def _call_claude(
-    samples: list, api_key: str, conventions: Optional[dict]
+    samples: list, api_key: str, conventions: Optional[dict],
+    folder: str = "",
 ) -> dict:
     if not api_key:
         raise RuntimeError(
@@ -309,7 +345,7 @@ def _call_claude(
         )
 
     system   = _INCREMENTAL_SYSTEM if conventions else _FULL_SYSTEM
-    user_msg = _build_message(samples, conventions)
+    user_msg = _build_message(samples, conventions, folder)
 
     payload = json.dumps({
         "model":      _MODEL,
