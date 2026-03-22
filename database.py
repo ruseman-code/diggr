@@ -439,6 +439,85 @@ def search_samples(
     return result
 
 
+# ── Health check ─────────────────────────────────────────────────────────────
+
+def get_health_report() -> dict:
+    """Scan the active library and return a dict with five issue lists.
+
+    Keys
+    ----
+    total       int          – total number of samples in the library
+    missing     [str]        – absolute paths whose file no longer exists on disk
+    duplicates  [dict]       – [{"filename": str, "paths": [str, ...]}], groups > 1
+    untagged    [str]        – absolute paths with no tags at all
+    no_bpm      [str]        – absolute paths where bpm IS NULL
+    no_rating   [str]        – absolute paths where rating = 0 (unrated)
+    """
+    with get_connection() as conn:
+        all_rows = conn.execute(
+            "SELECT id, path, rating, bpm FROM samples ORDER BY path"
+        ).fetchall()
+        tagged_ids = {
+            r["sample_id"]
+            for r in conn.execute(
+                "SELECT DISTINCT sample_id FROM sample_tags"
+            ).fetchall()
+        }
+
+    missing:   list = []
+    dup_map:   dict = {}   # basename → [abs_path]
+    untagged:  list = []
+    no_bpm:    list = []
+    no_rating: list = []
+
+    for row in all_rows:
+        abs_path = _abs(row["path"])
+        basename = os.path.basename(abs_path)
+
+        if not Path(abs_path).exists():
+            missing.append(abs_path)
+
+        dup_map.setdefault(basename, []).append(abs_path)
+
+        if row["id"] not in tagged_ids:
+            untagged.append(abs_path)
+
+        if row["bpm"] is None:
+            no_bpm.append(abs_path)
+
+        if not row["rating"]:
+            no_rating.append(abs_path)
+
+    duplicates = sorted(
+        [{"filename": fn, "paths": paths} for fn, paths in dup_map.items() if len(paths) > 1],
+        key=lambda d: d["filename"].lower(),
+    )
+
+    return {
+        "total":      len(all_rows),
+        "missing":    missing,
+        "duplicates": duplicates,
+        "untagged":   untagged,
+        "no_bpm":     no_bpm,
+        "no_rating":  no_rating,
+    }
+
+
+def remove_sample(path: str):
+    """Permanently delete a sample and its tags/project memberships from the DB."""
+    rel = _rel(path)
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT id FROM samples WHERE path = ?", (rel,)
+        ).fetchone()
+        if not row:
+            return
+        sid = row["id"]
+        conn.execute("DELETE FROM sample_tags    WHERE sample_id = ?", (sid,))
+        conn.execute("DELETE FROM project_samples WHERE sample_id = ?", (sid,))
+        conn.execute("DELETE FROM samples         WHERE id = ?",        (sid,))
+
+
 # ── Library data export ───────────────────────────────────────────────────────
 
 def get_all_samples_for_export() -> list:

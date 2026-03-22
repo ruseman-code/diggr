@@ -16,6 +16,8 @@ import database as db
 from bpm_detector import BpmDetector
 from ui.file_browser import FileBrowser
 from ui.filter_panel import FilterPanel
+from ui.export_dialog import ExportDialog
+from ui.health_check_dialog import HealthCheckDialog
 from ui.library_toolbar import LibraryToolbar
 from ui.project_panel import ProjectPanel, _LIBRARY_ID
 from ui.tag_panel import TagPanel
@@ -37,10 +39,22 @@ class MainWindow(QMainWindow):
         self._apply_stylesheet()
         self._connect_signals()
         self._restore_last_folder()
+        # Delay the monthly health-check prompt so the window finishes painting first.
+        QTimer.singleShot(800, self._maybe_prompt_health_check)
 
     # ── Build ─────────────────────────────────────────────────────────────
 
     def _build_ui(self):
+        # File menu
+        file_menu = self.menuBar().addMenu("File")
+        export_act = file_menu.addAction("Export Library Data…")
+        export_act.setShortcut(QKeySequence("Ctrl+E"))
+        export_act.triggered.connect(self._on_export_library)
+        file_menu.addSeparator()
+        health_act = file_menu.addAction("Library Health Check…")
+        health_act.setShortcut(QKeySequence("Ctrl+Shift+H"))
+        health_act.triggered.connect(self._run_health_check)
+
         # Library toolbar (top of window)
         self.library_toolbar = LibraryToolbar(self)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.library_toolbar)
@@ -204,8 +218,9 @@ class MainWindow(QMainWindow):
             self.file_browser.load_folder(folder)
 
     def _connect_signals(self):
-        # Library toolbar → switch active library
+        # Library toolbar → switch active library / health check
         self.library_toolbar.library_switched.connect(self._on_library_switched)
+        self.library_toolbar.health_check_requested.connect(self._run_health_check)
 
         # Filter panel → file browser
         self.filter_panel.filters_changed.connect(self._apply_filters)
@@ -280,6 +295,51 @@ class MainWindow(QMainWindow):
             )
         else:
             self._bpm_progress_label.setText("")
+
+    def _on_export_library(self):
+        dlg = ExportDialog(self)
+        dlg.exec()
+
+    def _run_health_check(self):
+        dlg = HealthCheckDialog(self)
+        dlg.exec()
+
+        if dlg.files_were_removed:
+            self.file_browser.refresh()
+            self.project_panel.refresh()
+
+        if dlg.bpm_paths:
+            n = len(dlg.bpm_paths)
+            self._bpm_pending = n
+            self._bpm_progress_label.setText(
+                f"Analysing {n} file{'s' if n != 1 else ''}…"
+            )
+            self._bpm_detector.detect_folder(dlg.bpm_paths)
+
+    def _maybe_prompt_health_check(self):
+        """Prompt once a month to run a health check — silently skips the very
+        first launch so new users aren't immediately nagged."""
+        last = config.get_last_health_check()
+        if not last:
+            # Record today so we have a baseline, but don't show a prompt.
+            config.set_last_health_check()
+            return
+        from datetime import date
+        try:
+            days = (date.today() - date.fromisoformat(last)).days
+        except ValueError:
+            return
+        if days >= 30:
+            from PyQt6.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
+                self,
+                "Library health check",
+                f"Your last library health check was {days} day{'s' if days != 1 else ''} ago.\n"
+                "Run a health check now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self._run_health_check()
 
     def _on_library_switched(self, lib_id: str):
         """Switch to a different library: swap DB, reload file browser."""

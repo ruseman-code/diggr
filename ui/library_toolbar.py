@@ -6,7 +6,7 @@ from pathlib import Path
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QToolBar, QLabel, QComboBox, QPushButton, QInputDialog, QMessageBox,
-    QWidget, QHBoxLayout,
+    QWidget, QHBoxLayout, QFrame,
 )
 
 import config
@@ -20,7 +20,8 @@ class LibraryToolbar(QToolBar):
     signal and performs the full switch (DB swap + file browser reload).
     """
 
-    library_switched = pyqtSignal(str)  # lib_id
+    library_switched = pyqtSignal(str)   # lib_id
+    health_check_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__("Library", parent)
@@ -62,6 +63,18 @@ class LibraryToolbar(QToolBar):
         self._del_btn.setToolTip("Delete library")
         self._del_btn.clicked.connect(self._on_delete)
         hl.addWidget(self._del_btn)
+
+        # Visual separator then health-check button
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.VLine)
+        sep.setStyleSheet("color: #45475a;")
+        sep.setFixedWidth(1)
+        hl.addWidget(sep)
+
+        self._health_btn = QPushButton("Health Check")
+        self._health_btn.setToolTip("Scan the active library for issues")
+        self._health_btn.clicked.connect(self.health_check_requested)
+        hl.addWidget(self._health_btn)
 
         self.addWidget(container)
 

@@ -177,6 +177,20 @@ def to_absolute(path: str) -> str:
     return str(Path(root) / path)
 
 
+# ── Health check ─────────────────────────────────────────────────────────────
+
+def get_last_health_check() -> str:
+    """Return ISO-format date of the last health check, or ''."""
+    return _load().get("last_health_check", "")
+
+
+def set_last_health_check():
+    from datetime import date
+    data = _load()
+    data["last_health_check"] = date.today().isoformat()
+    _save(data)
+
+
 # ── Migration flags ───────────────────────────────────────────────────────────
 
 def is_libraries_migrated() -> bool:
