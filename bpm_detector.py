@@ -67,10 +67,13 @@ class BpmDetector(QObject):
             self.analysis_ready.emit(path, bpm, key)
 
     def _analyse(self, path: str, librosa) -> Tuple[float, str]:
+        import warnings
         try:
-            y, sr = librosa.load(path, sr=None, mono=True)
-            bpm = self._estimate_bpm(y, sr, librosa)
-            key = self._estimate_key(y, sr, librosa)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                y, sr = librosa.load(path, sr=None, mono=True)
+                bpm = self._estimate_bpm(y, sr, librosa)
+                key = self._estimate_key(y, sr, librosa)
             return bpm, key
         except Exception as exc:
             import activity_log, os
