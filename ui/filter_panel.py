@@ -20,7 +20,7 @@ class FilterPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(220)
+        self.setMinimumWidth(220)
         self._tag_checkboxes: dict[str, QCheckBox] = {}
         self._build_ui()
 

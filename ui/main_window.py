@@ -76,8 +76,7 @@ class MainWindow(QMainWindow):
         left_col.addWidget(self.project_panel)
         left_col.addWidget(self.filter_panel)
         left_col.setSizes([220, 480])
-        left_col.setMinimumWidth(160)
-        left_col.setMaximumWidth(300)
+        left_col.setMinimumWidth(220)
 
         self.file_browser  = FileBrowser()
         self.tag_panel     = TagPanel()
