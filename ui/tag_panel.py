@@ -43,7 +43,7 @@ class StarRating(QWidget):
         for i, btn in enumerate(self._buttons):
             filled = i < self._rating
             btn.setStyleSheet(
-                f"font-size: 18px; color: {'#f0c040' if filled else '#555'};"
+                f"font-size: 18px; color: {'#f0c040' if filled else '#2e2e50'};"
             )
 
     def set_rating(self, value: int):
@@ -71,11 +71,20 @@ class TagChip(QWidget):
             close_btn.clicked.connect(lambda: self.removed.emit(self.tag))
             hl.addWidget(close_btn)
 
-        self.setStyleSheet("""
-            TagChip {
-                background: #2a4a6a;
+        _chip_colours = [
+            "#1e3a5a",   # deep blue
+            "#2a1e50",   # deep purple
+            "#1a3d38",   # deep teal
+            "#3d1e38",   # deep pink
+            "#1e3a1e",   # deep lime
+            "#3d2e10",   # deep amber
+        ]
+        bg = _chip_colours[hash(tag) % len(_chip_colours)]
+        self.setStyleSheet(f"""
+            TagChip {{
+                background: {bg};
                 border-radius: 4px;
-            }
+            }}
         """)
 
 
@@ -103,7 +112,7 @@ class TagPanel(QWidget):
         # File label
         self.file_label = QLabel("No file selected")
         self.file_label.setWordWrap(True)
-        self.file_label.setStyleSheet("font-weight: bold; color: #ccc;")
+        self.file_label.setStyleSheet("font-weight: bold; color: #dde0f8;")
         root.addWidget(self.file_label)
 
         sep = QFrame()
@@ -118,11 +127,11 @@ class TagPanel(QWidget):
         rl.addWidget(self.star_rating)
 
         self.bpm_label = QLabel("— BPM")
-        self.bpm_label.setStyleSheet("color: #89b4fa; font-size: 12px;")
+        self.bpm_label.setStyleSheet("color: #30c4c0; font-size: 12px;")
         rl.addWidget(self.bpm_label)
 
         self.key_label = QLabel("— key")
-        self.key_label.setStyleSheet("color: #a6e3a1; font-size: 12px;")
+        self.key_label.setStyleSheet("color: #9c6ce0; font-size: 12px;")
         rl.addWidget(self.key_label)
 
         root.addWidget(grp_rating)
@@ -162,7 +171,7 @@ class TagPanel(QWidget):
             btn = QPushButton(tag)
             btn.setFlat(True)
             btn.setStyleSheet(
-                "text-align: left; padding: 2px 6px; color: #9bc;"
+                "text-align: left; padding: 2px 6px; color: #5090f0;"
             )
             btn.clicked.connect(lambda _, t=tag: self._add_tag(t))
             preset_vbox.addWidget(btn)

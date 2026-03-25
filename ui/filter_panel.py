@@ -34,7 +34,7 @@ class FilterPanel(QWidget):
         # Reset all filters button
         reset_all_btn = QPushButton("Reset all filters")
         reset_all_btn.setFlat(True)
-        reset_all_btn.setStyleSheet("color: #f38ba8; text-align: right; padding: 0;")
+        reset_all_btn.setStyleSheet("color: #e05080; text-align: right; padding: 0;")
         reset_all_btn.clicked.connect(self.reset_all)
         root.addWidget(reset_all_btn)
 
@@ -116,7 +116,7 @@ class FilterPanel(QWidget):
 
         dnb_btn = QPushButton("DnB (170–174)")
         dnb_btn.setFlat(True)
-        dnb_btn.setStyleSheet("color: #9bc; text-align: left; padding: 2px 0;")
+        dnb_btn.setStyleSheet("color: #30c4c0; text-align: left; padding: 2px 0;")
         dnb_btn.setToolTip("Set range to typical drum and bass tempo")
         dnb_btn.clicked.connect(self._set_dnb_range)
         bpm_layout.addWidget(dnb_btn)

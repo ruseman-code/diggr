@@ -38,15 +38,26 @@ def _read_audio(path: str):
     return samples, dur_ms
 
 
+_WAVEFORM_PALETTE = [
+    ("#c05818", "#f07830"),   # orange
+    ("#188888", "#30c4c0"),   # teal
+    ("#6030a8", "#9c6ce0"),   # purple
+    ("#a03060", "#e05080"),   # pink
+    ("#407015", "#80d040"),   # lime
+    ("#2050b8", "#5090f0"),   # blue
+    ("#907010", "#f0c040"),   # amber
+]
+
+
 class WaveformWidget(QWidget):
     HEIGHT = 115
 
-    # Colours
-    _BG         = QColor("#0d0d1a")
-    _WAVE_MID   = QColor("#2a5a9a")   # unplayed portion
-    _WAVE_PAST  = QColor("#5aa0e8")   # played portion (brighter)
-    _CENTRE     = QColor("#1a2a4a")   # centre-line tint
-    _HEAD       = QColor("#ffffff")   # playhead
+    # Colours — overridden per file in load()
+    _BG         = QColor("#08080f")
+    _WAVE_MID   = QColor("#2050b8")
+    _WAVE_PAST  = QColor("#5090f0")
+    _CENTRE     = QColor("#10101e")
+    _HEAD       = QColor("#ffffff")
     _TEXT       = QColor("#44546a")
 
     def __init__(self, parent=None):
@@ -78,6 +89,12 @@ class WaveformWidget(QWidget):
         self._wave_pixmap = None
         self._error = None
         self._loading = True
+        # Assign a consistent colour based on the filename
+        idx = hash(path) % len(_WAVEFORM_PALETTE)
+        mid_hex, bright_hex = _WAVEFORM_PALETTE[idx]
+        self._WAVE_MID  = QColor(mid_hex)
+        self._WAVE_PAST = QColor(bright_hex)
+        self._CENTRE    = QColor(mid_hex).darker(250)
         self.update()
         threading.Thread(target=self._bg_load, args=(path,), daemon=True).start()
 

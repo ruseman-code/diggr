@@ -261,12 +261,12 @@ class FileBrowser(QWidget):
             bpm_item.setData(bpm_val or 0.0, _BPM_ROLE)
             bpm_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             bpm_item.setForeground(
-                QColor("#89b4fa") if bpm_val else QColor("#45475a")
+                QColor("#30c4c0") if bpm_val else QColor("#2e2e50")
             )
 
             key_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             key_item.setForeground(
-                QColor("#a6e3a1") if key_val else QColor("#45475a")
+                QColor("#9c6ce0") if key_val else QColor("#2e2e50")
             )
 
             self._model.appendRow(
@@ -291,20 +291,20 @@ class FileBrowser(QWidget):
                 if bpm > 0:
                     bpm_item.setText(f"{bpm:.1f}")
                     bpm_item.setData(bpm, _BPM_ROLE)
-                    bpm_item.setForeground(QColor("#89b4fa"))
+                    bpm_item.setForeground(QColor("#30c4c0"))
                 else:
                     bpm_item.setText("–")
                     bpm_item.setData(0.0, _BPM_ROLE)
-                    bpm_item.setForeground(QColor("#45475a"))
+                    bpm_item.setForeground(QColor("#2e2e50"))
 
             key_item = self._model.item(row, COL_KEY)
             if key_item:
                 if key:
                     key_item.setText(key)
-                    key_item.setForeground(QColor("#a6e3a1"))
+                    key_item.setForeground(QColor("#9c6ce0"))
                 else:
                     key_item.setText("–")
-                    key_item.setForeground(QColor("#45475a"))
+                    key_item.setForeground(QColor("#2e2e50"))
             break
 
     # ── Sort state ─────────────────────────────────────────────────────────

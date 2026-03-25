@@ -101,16 +101,16 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
 
         self._now_playing_label = QLabel("")
-        self._now_playing_label.setStyleSheet("color: #8cf; font-size: 11px;")
+        self._now_playing_label.setStyleSheet("color: #30c4c0; font-size: 11px;")
         self.status_bar.addPermanentWidget(self._now_playing_label)
 
         self._bpm_progress_label = QLabel("")
-        self._bpm_progress_label.setStyleSheet("color: #6c7086; font-size: 11px;")
+        self._bpm_progress_label.setStyleSheet("color: #55556a; font-size: 11px;")
         self.status_bar.addWidget(self._bpm_progress_label)   # left-aligned
 
         self._stop_btn = QPushButton("■ Stop")
         self._stop_btn.setFlat(True)
-        self._stop_btn.setStyleSheet("color: #f88;")
+        self._stop_btn.setStyleSheet("color: #e05080;")
         self._stop_btn.clicked.connect(self._stop_playback)
         self._stop_btn.hide()
         self.status_bar.addPermanentWidget(self._stop_btn)
@@ -500,17 +500,23 @@ class MainWindow(QMainWindow):
         fs = self._font_size
         self.setStyleSheet(f"""
             QMainWindow, QWidget {{
-                background-color: #1e1e2e;
-                color: #cdd6f4;
+                background-color: #0f0f17;
+                color: #dde0f8;
                 font-family: "Inter", "Segoe UI", sans-serif;
                 font-size: {fs}px;
             }}
+            QToolBar {{
+                background: #0a0a10;
+                border-bottom: 1px solid #1e1e30;
+                spacing: 4px;
+                padding: 2px 4px;
+            }}
             QGroupBox {{
-                border: 1px solid #313244;
+                border: 1px solid #22223a;
                 border-radius: 6px;
                 margin-top: 8px;
                 padding-top: 8px;
-                color: #89b4fa;
+                color: #7878c8;
                 font-weight: bold;
             }}
             QGroupBox::title {{
@@ -519,68 +525,72 @@ class MainWindow(QMainWindow):
                 top: -1px;
             }}
             QTreeView {{
-                background: #181825;
-                alternate-background-color: #1e1e2e;
-                border: 1px solid #313244;
+                background: #0a0a10;
+                alternate-background-color: #0f0f18;
+                border: 1px solid #22223a;
                 border-radius: 4px;
             }}
             QTreeView::item:selected {{
-                background: #313244;
+                background: #1e1e38;
             }}
             QTreeView::item:hover {{
-                background: #2a2a3e;
+                background: #161628;
             }}
             QHeaderView::section {{
-                background: #181825;
-                color: #89b4fa;
+                background: #0a0a10;
+                color: #5090f0;
                 border: none;
                 padding: 4px 8px;
-                border-bottom: 1px solid #313244;
+                border-bottom: 1px solid #22223a;
             }}
             QLineEdit, QTextEdit, QSpinBox {{
-                background: #181825;
-                border: 1px solid #313244;
+                background: #0a0a10;
+                border: 1px solid #22223a;
                 border-radius: 4px;
                 padding: 4px;
-                color: #cdd6f4;
+                color: #dde0f8;
             }}
             QLineEdit:focus, QTextEdit:focus {{
-                border-color: #89b4fa;
+                border-color: #5090f0;
             }}
             QPushButton {{
-                background: #313244;
-                border: 1px solid #45475a;
+                background: #1a1a2e;
+                border: 1px solid #2e2e50;
                 border-radius: 4px;
                 padding: 4px 10px;
-                color: #cdd6f4;
+                color: #dde0f8;
             }}
             QPushButton:hover {{
-                background: #45475a;
+                background: #252545;
+                border-color: #5090f0;
             }}
             QPushButton:pressed {{
-                background: #585b70;
+                background: #2e2e58;
             }}
             QScrollBar:vertical {{
-                background: #181825;
+                background: #0a0a10;
                 width: 8px;
                 border-radius: 4px;
             }}
             QScrollBar::handle:vertical {{
-                background: #45475a;
+                background: #2e2e50;
                 border-radius: 4px;
                 min-height: 20px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: #5090f0;
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 height: 0px;
             }}
             QSplitter::handle {{
-                background: #313244;
+                background: #1e1e30;
                 width: 1px;
             }}
             QStatusBar {{
-                background: #181825;
-                border-top: 1px solid #313244;
-                color: #6c7086;
+                background: #0a0a10;
+                border-top: 1px solid #1e1e30;
+                color: #55556a;
             }}
             QCheckBox {{
                 spacing: 6px;
@@ -588,50 +598,50 @@ class MainWindow(QMainWindow):
             QCheckBox::indicator {{
                 width: 14px;
                 height: 14px;
-                border: 1px solid #45475a;
+                border: 1px solid #2e2e50;
                 border-radius: 3px;
-                background: #181825;
+                background: #0a0a10;
             }}
             QCheckBox::indicator:checked {{
-                background: #89b4fa;
-                border-color: #89b4fa;
+                background: #5090f0;
+                border-color: #5090f0;
             }}
             QListWidget {{
-                background: #181825;
-                border: 1px solid #313244;
+                background: #0a0a10;
+                border: 1px solid #22223a;
                 border-radius: 4px;
-                alternate-background-color: #1e1e2e;
+                alternate-background-color: #0f0f18;
             }}
             QListWidget::item {{
                 padding: 4px 6px;
                 border-radius: 3px;
             }}
             QListWidget::item:selected {{
-                background: #313244;
-                color: #cdd6f4;
+                background: #1e1e38;
+                color: #dde0f8;
             }}
             QListWidget::item:hover {{
-                background: #2a2a3e;
+                background: #161628;
             }}
             QComboBox {{
-                background: #181825;
-                border: 1px solid #313244;
+                background: #0a0a10;
+                border: 1px solid #22223a;
                 border-radius: 4px;
                 padding: 4px 8px;
-                color: #cdd6f4;
+                color: #dde0f8;
             }}
             QComboBox::drop-down {{
                 border: none;
                 width: 20px;
             }}
             QComboBox QAbstractItemView {{
-                background: #181825;
-                border: 1px solid #313244;
-                selection-background-color: #313244;
+                background: #0a0a10;
+                border: 1px solid #22223a;
+                selection-background-color: #1e1e38;
             }}
             QMenu {{
-                background: #181825;
-                border: 1px solid #313244;
+                background: #0f0f1a;
+                border: 1px solid #22223a;
                 border-radius: 4px;
                 padding: 4px;
             }}
@@ -640,11 +650,11 @@ class MainWindow(QMainWindow):
                 border-radius: 3px;
             }}
             QMenu::item:selected {{
-                background: #313244;
+                background: #1e1e38;
             }}
             QMenu::separator {{
                 height: 1px;
-                background: #313244;
+                background: #22223a;
                 margin: 3px 8px;
             }}
         """)

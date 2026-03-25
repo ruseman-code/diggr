@@ -70,7 +70,7 @@ class LibraryToolbar(QToolBar):
         # Visual separator then health-check button
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setStyleSheet("color: #45475a;")
+        sep.setStyleSheet("color: #1e1e30;")
         sep.setFixedWidth(1)
         hl.addWidget(sep)
 
@@ -81,7 +81,7 @@ class LibraryToolbar(QToolBar):
 
         sep2 = QFrame()
         sep2.setFrameShape(QFrame.Shape.VLine)
-        sep2.setStyleSheet("color: #45475a;")
+        sep2.setStyleSheet("color: #1e1e30;")
         sep2.setFixedWidth(1)
         hl.addWidget(sep2)
 
@@ -92,18 +92,22 @@ class LibraryToolbar(QToolBar):
 
         sep_so = QFrame()
         sep_so.setFrameShape(QFrame.Shape.VLine)
-        sep_so.setStyleSheet("color: #45475a;")
+        sep_so.setStyleSheet("color: #1e1e30;")
         sep_so.setFixedWidth(1)
         hl.addWidget(sep_so)
 
         self._smart_btn = QPushButton("✦ Smart Organise")
+        self._smart_btn.setStyleSheet(
+            "background: #1e1040; color: #9c6ce0; border: 1px solid #4a2a88;"
+            "border-radius: 4px; padding: 4px 10px;"
+        )
         self._smart_btn.setToolTip("Use Claude AI to suggest a reorganised folder structure and file renames")
         self._smart_btn.clicked.connect(self.smart_organise_requested)
         hl.addWidget(self._smart_btn)
 
         sep3 = QFrame()
         sep3.setFrameShape(QFrame.Shape.VLine)
-        sep3.setStyleSheet("color: #45475a;")
+        sep3.setStyleSheet("color: #1e1e30;")
         sep3.setFixedWidth(1)
         hl.addWidget(sep3)
 
