@@ -31,6 +31,13 @@ class FilterPanel(QWidget):
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(10)
 
+        # Reset all filters button
+        reset_all_btn = QPushButton("Reset all filters")
+        reset_all_btn.setFlat(True)
+        reset_all_btn.setStyleSheet("color: #f38ba8; text-align: right; padding: 0;")
+        reset_all_btn.clicked.connect(self.reset_all)
+        root.addWidget(reset_all_btn)
+
         # Smart search bar (primary)
         grp_smart = QGroupBox("Search")
         smart_vl = QVBoxLayout(grp_smart)
@@ -151,6 +158,33 @@ class FilterPanel(QWidget):
     def _set_dnb_range(self):
         self.bpm_min_spin.setValue(170)
         self.bpm_max_spin.setValue(174)
+
+    def reset_all(self):
+        """Clear every filter back to its default state."""
+        self.smart_edit.blockSignals(True)
+        self.search_edit.blockSignals(True)
+        self.rating_spin.blockSignals(True)
+        self.bpm_min_spin.blockSignals(True)
+        self.bpm_max_spin.blockSignals(True)
+        self.key_combo.blockSignals(True)
+
+        self.smart_edit.clear()
+        self.search_edit.clear()
+        self.rating_spin.setValue(0)
+        self.bpm_min_spin.setValue(0)
+        self.bpm_max_spin.setValue(0)
+        self.key_combo.setCurrentIndex(0)
+        for cb in self._tag_checkboxes.values():
+            cb.setChecked(False)
+
+        self.smart_edit.blockSignals(False)
+        self.search_edit.blockSignals(False)
+        self.rating_spin.blockSignals(False)
+        self.bpm_min_spin.blockSignals(False)
+        self.bpm_max_spin.blockSignals(False)
+        self.key_combo.blockSignals(False)
+
+        self.filters_changed.emit()
 
     # ── Public API ─────────────────────────────────────────────────────────
 
